@@ -1,0 +1,240 @@
+{
+  "name": "Cedar Course Co. - Refund Request (LIVE RUN sandbox tool)",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "order_id",
+              "type": "string"
+            },
+            {
+              "name": "reason",
+              "type": "string"
+            },
+            {
+              "name": "customer_phone",
+              "type": "string"
+            },
+            {
+              "name": "customer_name",
+              "type": "string"
+            },
+            {
+              "name": "message_id",
+              "type": "string"
+            },
+            {
+              "name": "language",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "261f3bda-2fa2-2a40-0fed-44a7f25f07a4",
+      "name": "Tool Input",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "cedarLiveTool0001",
+          "mode": "id",
+          "cachedResultName": "Cedar Course Co. - Order Lookup (LIVE RUN sandbox tool)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "order_id": "={{ $json.order_id }}",
+            "customer_phone": "={{ $json.customer_phone }}"
+          },
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "557874de-ccda-c9da-cdd1-03fb9201caf4",
+      "name": "Look Up Order",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -180,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Refund Policy Check: the agent can ask for a refund, but only this node decides what happens.\n// Window 14 days, automatic logging up to 150 USD; anything else is declined or goes to a person.\nconst WINDOW_DAYS = 14;\nconst AUTO_LIMIT_USD = 150;\nconst req = $('Tool Input').first().json;\nconst order = $input.first().json;\nconst nowMs = $now.toMillis();\nconst day = (ms) => new Date(ms).toISOString().slice(0, 10);\n\nlet decision = 'ok';\nlet message = '';\nconst id = order.order_id || req.order_id;\nif (!order.found) {\n  decision = 'not_found';\n  message = `Order ${id} was not found, so no refund request was logged. Ask the customer to check the order number.`;\n} else if (!order.owner_match) {\n  decision = 'not_owner';\n  message = 'That order is not linked to this WhatsApp number, so nothing was logged. Do not share details. Offer a team member and end your reply with [[HANDOFF:team_task]].';\n} else if (order.status === 'refunded') {\n  decision = 'already_refunded';\n  message = `Order ${id} is already refunded. Tell the customer. Nothing was logged.`;\n} else if (order.status !== 'paid') {\n  decision = 'not_paid';\n  message = `Order ${id} has status \"${order.status}\", not paid, so it cannot be refunded here. Nothing was logged. End your reply with [[HANDOFF:payment_dispute]].`;\n} else if ((nowMs - Date.parse(order.purchased_at)) / 86400000 > WINDOW_DAYS) {\n  decision = 'window_closed';\n  message = `The ${WINDOW_DAYS}-day refund window for order ${id} closed on ${day(Date.parse(order.purchased_at) + WINDOW_DAYS * 86400000)}. Nothing was logged. Explain the policy politely.`;\n} else if (order.amount > AUTO_LIMIT_USD) {\n  decision = 'needs_human';\n  message = `Order ${id} is ${order.amount} ${order.currency}, above the automatic limit of ${AUTO_LIMIT_USD} USD. Nothing was logged. Do not promise a refund. Say a person will review it and end your reply with [[HANDOFF:refund_over_limit]].`;\n} else {\n  message = `Refund request logged for order ${id} (${order.amount} ${order.currency}). Status: pending approval. A team member confirms within 2 business days. Tell the customer exactly this.`;\n}\n\nconst refundRow =\n  decision === 'ok'\n    ? {\n        requested_at: new Date(nowMs).toISOString(),\n        message_id: String(req.message_id ?? ''),\n        customer_phone: String(req.customer_phone ?? ''),\n        customer_name: String(req.customer_name ?? ''),\n        order_id: id,\n        product: order.product,\n        amount: order.amount,\n        currency: order.currency,\n        reason: String(req.reason ?? '').replace(/\\s+/g, ' ').trim().slice(0, 300) || 'not given',\n        language: String(req.language ?? ''),\n        status: 'pending approval',\n        handled_by: '',\n        handled_at: '',\n      }\n    : null;\nreturn [{ json: { decision, message, refundRow } }];\n"
+      },
+      "id": "94bc54fb-471f-7ac4-5160-36a64d09a3dd",
+      "name": "Refund Policy Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        40,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "6f3408bf-e3b7-915d-6f17-38cc1d58be39",
+              "leftValue": "={{ $json.decision }}",
+              "rightValue": "ok",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "dd2f4038-6db7-b5b7-83a7-936f030c4831",
+      "name": "Can Log Refund?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Capture Refund Row: stands in for \"Append Refund Row\" (Google Sheets append). Nothing is written anywhere;\n// the row that WOULD be appended is kept in the output.\nreturn { json: { ...$input.item.json, capturedRefundRow: $input.item.json.refundRow, wouldAppendTo: 'Refunds sheet' } };\n",
+        "mode": "runOnceForEachItem"
+      },
+      "id": "85691ec0-5d30-cc45-0425-86b6a3a8faa6",
+      "name": "Capture Refund Row (not written)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "73c117e6-745a-ef7a-ad2a-384afa81389b",
+              "name": "decision",
+              "value": "={{ $('Refund Policy Check').item.json.decision }}",
+              "type": "string"
+            },
+            {
+              "id": "d70128ee-3b42-4b63-1a3a-03661641a4cd",
+              "name": "result",
+              "value": "={{ $('Refund Policy Check').item.json.message }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "52b93250-a478-dcc1-b6de-72cf6cf33a72",
+      "name": "Return Result",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        700,
+        60
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Tool Input": {
+      "main": [
+        [
+          {
+            "node": "Look Up Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Look Up Order": {
+      "main": [
+        [
+          {
+            "node": "Refund Policy Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Refund Policy Check": {
+      "main": [
+        [
+          {
+            "node": "Can Log Refund?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Can Log Refund?": {
+      "main": [
+        [
+          {
+            "node": "Capture Refund Row (not written)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Capture Refund Row (not written)": {
+      "main": [
+        [
+          {
+            "node": "Return Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 900
+  },
+  "meta": {
+    "templateNote": "LIVE-RUN test harness. Runs the demo steps on a real n8n with a real OpenAI chat model, on made-up messages only. Every send (WhatsApp, Sheets, payment API, Slack, Telegram) is replaced by a Capture node that records and sends nothing."
+  },
+  "id": "cedarLiveTool0002"
+}

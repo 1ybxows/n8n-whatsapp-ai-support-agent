@@ -1,6 +1,6 @@
 # Test results
 
-Run: 2026-10-26T23:46:13.498Z on Node v25.9.0. Fixed test clock for the date rules: 2026-10-26T12:00:00Z.
+Run: 2026-10-26T23:51:52.274Z on Node v25.9.0. Fixed test clock for the date rules: 2026-10-26T12:00:00Z.
 Command: `node test/run-tests.mjs`
 
 **148/148 checks passed, 0 failed.** 11 Code nodes were compiled and the main ones were run on 24 made-up payloads.
@@ -159,7 +159,7 @@ Command: `node test/run-tests.mjs`
 | 141 | Escalation & report | every escalation reason the workflows can produce has a readable label | PASS |
 | 142 | Escalation & report | Weekly report: counts for the last 7 days only (fixed fake rows, hand-counted) | PASS |
 | 143 | Escalation & report | Weekly report: text lists every number; empty sheets give zeros, not a crash | PASS |
-| 144 | Safety & docs | no keys, tokens or real-looking emails/numbers in 60 files | PASS |
+| 144 | Safety & docs | no keys, tokens or real-looking emails/numbers in 61 files | PASS |
 | 145 | Safety & docs | no real business or personal name anywhere (shop types, brands, private word list) | PASS |
 | 146 | Safety & docs | README: honest status line, Mermaid diagram, all workflows and sheets named | PASS |
 | 147 | Safety & docs | case-study.md: about 200 words, first person, labelled as a demo, no personal name | PASS |
