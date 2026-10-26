@@ -1,0 +1,39 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "100000000000001",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15550100000",
+              "phone_number_id": "100000000000002"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Ken Ortiz"
+                },
+                "wa_id": "15550100108"
+              }
+            ],
+            "messages": [
+              {
+                "from": "15550100108",
+                "id": "wamid.DEMO-0007",
+                "timestamp": "1792900420",
+                "type": "text",
+                "text": {
+                  "body": "   "
+                }
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "100000000000001",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15550100000",
+              "phone_number_id": "100000000000002"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Noor Aziz"
+                },
+                "wa_id": "15550100105"
+              }
+            ],
+            "messages": [
+              {
+                "from": "15550100105",
+                "id": "wamid.DEMO-0017",
+                "timestamp": "1792901020",
+                "type": "text",
+                "text": {
+                  "body": "هذه خدمة سيئة جدا! أنا غاضب، نصب واحتيال، أريد مالي الآن"
+                }
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

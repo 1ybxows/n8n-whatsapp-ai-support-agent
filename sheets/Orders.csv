@@ -1,0 +1,7 @@
+order_id,customer_phone,customer_name,product,amount,currency,purchased_at,status
+CC-1042,+15550100101,Sam Carter,Cedar Course,89,USD,2026-10-20T09:12:00Z,paid
+CC-1077,+15550100102,Layla Samir,Cedar Course + Workbook,129,USD,2026-10-22T16:40:00Z,paid
+CC-2003,+15550100103,Omar Hadi,Team License (5 seats),349,USD,2026-10-19T11:05:00Z,paid
+CC-1015,+15550100104,Dana Brooks,Cedar Course,89,USD,2026-09-01T08:30:00Z,paid
+CC-1099,+15550100105,Noor Aziz,Cedar Course,89,USD,2026-10-10T14:00:00Z,refunded
+CC-1120,+15550100106,Priya Menon,Cedar Course,89,USD,2026-10-24T10:00:00Z,pending

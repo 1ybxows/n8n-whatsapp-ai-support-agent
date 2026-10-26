@@ -1,0 +1,137 @@
+{
+  "name": "Cedar Course Co. - Error Handler (demo, not live)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Catch-all error workflow\nAssign it as the Error Workflow of the support agent, escalation, order lookup, refund request and weekly report workflows (Workflow Settings, UI only: it cannot be set by importing JSON).\n\nIt alerts on Telegram on purpose, not Slack: if Slack is the thing that broke, this alert still arrives.",
+        "width": 520,
+        "height": 230
+      },
+      "id": "05164375-77c9-7f1a-5758-1bdb7eebd96d",
+      "name": "Read Me",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -420,
+        -280
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "f5352666-f5a4-8880-e31b-ceae92a491b6",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -300,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "13fa5c74-5cf2-3cc7-1423-e156c3caf53a",
+              "name": "workflowName",
+              "value": "={{ $json.workflow.name }}",
+              "type": "string"
+            },
+            {
+              "id": "eacc862a-efab-c972-9726-6d5ff4759ad1",
+              "name": "failedNode",
+              "value": "={{ $json.execution.lastNodeExecuted }}",
+              "type": "string"
+            },
+            {
+              "id": "6a3724a5-15e7-a099-22fa-8c04f886b91f",
+              "name": "errorMessage",
+              "value": "={{ $json.execution.error.message }}",
+              "type": "string"
+            },
+            {
+              "id": "38cc99a9-a567-1bc2-6cf9-5e4c78e4c55c",
+              "name": "executionUrl",
+              "value": "={{ $json.execution.url }}",
+              "type": "string"
+            },
+            {
+              "id": "ab33deb3-2b93-43f0-423a-04f061a53b92",
+              "name": "text",
+              "value": "=Workflow failed: {{ $json.workflow.name }}\nNode: {{ $json.execution.lastNodeExecuted }}\nError: {{ $json.execution.error.message }}\nExecution: {{ $json.execution.url }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "f5df6a4b-ca65-596f-cefd-2234489554a6",
+      "name": "Build Alert",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -80,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "REPLACE_ME_CHAT_ID",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "e1d0b911-805a-e32e-12de-19625e3f351d",
+      "name": "Alert on Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        160,
+        0
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_ME",
+          "name": "Telegram bot (placeholder)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Alert": {
+      "main": [
+        [
+          {
+            "node": "Alert on Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateNote": "Demo on made-up data. Not imported into or run on a live n8n instance and not connected to a live WhatsApp number. No credential is configured: every credential is a placeholder with id REPLACE_ME."
+  }
+}

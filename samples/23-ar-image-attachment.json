@@ -1,0 +1,42 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "100000000000001",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15550100000",
+              "phone_number_id": "100000000000002"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Dalia Nouri"
+                },
+                "wa_id": "15550100114"
+              }
+            ],
+            "messages": [
+              {
+                "from": "15550100114",
+                "id": "wamid.DEMO-0023",
+                "timestamp": "1792901380",
+                "type": "image",
+                "image": {
+                  "caption": "هذه صورة الإيصال",
+                  "mime_type": "image/jpeg",
+                  "sha256": "DEMO-SHA256",
+                  "id": "DEMO-IMAGE-1"
+                }
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,268 @@
+{
+  "name": "Cedar Course Co. - Weekly Support Report (demo, not live)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Weekly report\nEvery Monday 08:00 (set your timezone in Workflow Settings). Reads the \"Conversations\" and \"Refunds\" sheets, counts the last 7 days, posts to Slack.\n\nTo email it instead: disable \"Post to Slack\", enable \"Email Report (optional)\", add an SMTP credential.\n\nBoth sheets are read in full: fine for a small shop, not for a very large log.",
+        "width": 520,
+        "height": 240
+      },
+      "id": "1e164bf5-a8fe-fd24-d24e-cce38c65f0b3",
+      "name": "Read Me",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -420,
+        -300
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "weeksInterval": 1,
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 8,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "e8ea547b-f574-4007-82df-f9f4133a0c23",
+      "name": "Every Monday 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -380,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_ME_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Conversations",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "4e6ff679-691a-8636-4349-6673f5e315f2",
+      "name": "Read Conversations",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -160,
+        -80
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Sheets account (placeholder)"
+        }
+      },
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_ME_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Refunds",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "9d6e6380-0be3-1121-aba9-3836d3765cf9",
+      "name": "Read Refunds",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -160,
+        100
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Sheets account (placeholder)"
+        }
+      },
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {},
+      "id": "e24c280d-efac-624f-ebb2-6f896401a9f1",
+      "name": "Combine Rows",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        60,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Weekly Report: counts the last 7 days from the Conversations and Refunds sheet rows.\n// Conversation rows have `outcome`; refund rows have `requested_at`.\nconst nowMs = $now.toMillis();\nconst sinceMs = nowMs - 7 * 86400000;\nconst day = (ms) => new Date(ms).toISOString().slice(0, 10);\nconst rows = $input.all().map((i) => i.json).filter((r) => r && Object.keys(r).length > 0);\nconst inWindow = (iso) => {\n  const t = Date.parse(iso);\n  return Number.isFinite(t) && t >= sinceMs && t <= nowMs;\n};\nconst conv = rows.filter((r) => 'outcome' in r && inWindow(r.logged_at));\nconst refunds = rows.filter((r) => 'requested_at' in r && inWindow(r.requested_at));\nconst handled = conv.filter((r) => r.outcome !== 'ignored');\nconst tally = (arr, key) => {\n  const m = {};\n  for (const r of arr) {\n    const k = String(r[key] || 'n/a');\n    m[k] = (m[k] || 0) + 1;\n  }\n  return m;\n};\nconst top = (m, n) => Object.entries(m).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, n);\nconst fmt = (entries) => (entries.length ? entries.map(([k, v]) => `${k} ${v}`).join(', ') : 'none');\n\nconst resolved = handled.filter((r) => r.outcome === 'resolved').length;\nconst escalated = handled.filter((r) => r.outcome === 'escalated').length;\nconst other = handled.length - resolved - escalated;\nconst pending = refunds.filter((r) => r.status === 'pending approval').length;\nconst refundAmount = Math.round(refunds.reduce((s, r) => s + (Number(r.amount) || 0), 0) * 100) / 100;\nconst stats = {\n  periodFrom: day(sinceMs),\n  periodTo: day(nowMs),\n  messages: handled.length,\n  ignored: conv.length - handled.length,\n  resolved,\n  escalated,\n  other,\n  resolutionRate: handled.length ? Math.round((resolved / handled.length) * 100) : 0,\n  refunds: refunds.length,\n  refundsPending: pending,\n  refundAmount,\n  topTopics: top(tally(handled, 'topic'), 5),\n  languages: tally(handled, 'language'),\n  escalationReasons: tally(handled.filter((r) => r.outcome === 'escalated'), 'escalation_reason'),\n};\nconst text = [\n  'Cedar Course Co. weekly support report',\n  `Period: ${stats.periodFrom} to ${stats.periodTo}`,\n  `Messages handled: ${stats.messages} (ignored: duplicates and empty, ${stats.ignored})`,\n  `Resolved by the bot: ${resolved} (${stats.resolutionRate}%)`,\n  `Passed to a person: ${escalated}`,\n  `Other (unsupported type, unclear, unsure): ${other}`,\n  `Refund requests logged: ${refunds.length} (${pending} pending approval, ${refundAmount} USD)`,\n  `Top topics: ${fmt(stats.topTopics)}`,\n  `Languages: ${fmt(Object.entries(stats.languages))}`,\n  `Why people were passed on: ${fmt(Object.entries(stats.escalationReasons))}`,\n].join('\\n');\nreturn [{ json: { subject: `Weekly support report ${stats.periodFrom} to ${stats.periodTo}`, text, stats } }];\n"
+      },
+      "id": "e28f8296-456d-8a1e-a589-14e6bac30db3",
+      "name": "Build Weekly Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "REPLACE_ME_CHANNEL_ID",
+          "mode": "id"
+        },
+        "text": "={{ $json.text }}",
+        "otherOptions": {}
+      },
+      "id": "84a1ec2c-e562-912d-dc04-b86b0d08bbae",
+      "name": "Post to Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        500,
+        -60
+      ],
+      "credentials": {
+        "slackApi": {
+          "id": "REPLACE_ME",
+          "name": "Slack account (placeholder)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "fromEmail": "reports@example.com",
+        "toEmail": "owner@example.com",
+        "subject": "={{ $json.subject }}",
+        "emailFormat": "text",
+        "text": "={{ $json.text }}",
+        "options": {}
+      },
+      "id": "6322193f-d753-c0d6-30bd-8d9d99607c83",
+      "name": "Email Report (optional)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        500,
+        100
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_ME",
+          "name": "SMTP account (placeholder)"
+        }
+      },
+      "disabled": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every Monday 08:00": {
+      "main": [
+        [
+          {
+            "node": "Read Conversations",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Read Refunds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Conversations": {
+      "main": [
+        [
+          {
+            "node": "Combine Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Refunds": {
+      "main": [
+        [
+          {
+            "node": "Combine Rows",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Combine Rows": {
+      "main": [
+        [
+          {
+            "node": "Build Weekly Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Weekly Report": {
+      "main": [
+        [
+          {
+            "node": "Post to Slack",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Email Report (optional)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateNote": "Demo on made-up data. Not imported into or run on a live n8n instance and not connected to a live WhatsApp number. No credential is configured: every credential is a placeholder with id REPLACE_ME."
+  }
+}

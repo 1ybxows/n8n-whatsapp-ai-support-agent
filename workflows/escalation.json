@@ -1,0 +1,173 @@
+{
+  "name": "Cedar Course Co. - Escalation (demo, not live)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Handoff to a person\nCalled by \"Notify Team\" in the support agent.\n\nSlack is on by default. To use Telegram instead: disable \"Post to Slack\" and enable \"Post to Telegram (optional)\", then pick your Telegram credential and chat id.\n\nIf this posting fails, the Error Workflow (set in Workflow Settings) alerts you on a different channel.",
+        "width": 520,
+        "height": 240
+      },
+      "id": "d4dfadd3-20ed-9f87-b86e-d7c1504bf711",
+      "name": "Read Me",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -420,
+        -300
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "phone",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "language",
+              "type": "string"
+            },
+            {
+              "name": "reason",
+              "type": "string"
+            },
+            {
+              "name": "topic",
+              "type": "string"
+            },
+            {
+              "name": "order_id",
+              "type": "string"
+            },
+            {
+              "name": "lastMessages",
+              "type": "array"
+            }
+          ]
+        }
+      },
+      "id": "4d0df5b3-4150-25b2-b1f1-f3639da86a5c",
+      "name": "Handoff Input",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -300,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Staff Message: the text a team member sees in Slack (or Telegram) for a handoff.\nconst p = $input.first().json;\nconst LABELS = {\n  unhappy: 'Unhappy customer',\n  human_requested: 'Customer asked for a person',\n  two_failed_answers: 'The bot could not answer twice in a row',\n  refund_over_limit: 'Refund above the automatic limit',\n  team_task: 'Needs a team member (invoice or account change)',\n  payment_dispute: 'Payment problem',\n  agent_handoff: 'The agent handed the chat over',\n  agent_error: 'The AI step failed',\n};\nconst label = LABELS[p.reason] || p.reason || 'Needs a person';\nconst langName = p.language === 'ar' ? 'Arabic' : p.language === 'en' ? 'English' : 'unknown';\nconst msgs = Array.isArray(p.lastMessages) ? p.lastMessages : [];\nconst lines = msgs.slice(-6).map((m) => `${m.from === 'bot' ? 'Bot' : 'Customer'}: ${String(m.text ?? '').replace(/\\s+/g, ' ').slice(0, 300)}`);\nconst text = [\n  `Handoff needed: ${label}`,\n  `Customer: ${p.name || 'Unknown'} (${p.phone})`,\n  `Language: ${langName} | Topic: ${p.topic || 'n/a'}${p.order_id ? ' | Order: ' + p.order_id : ''}`,\n  '',\n  'Last messages:',\n  ...(lines.length ? lines : ['(none recorded)']),\n  '',\n  'Reply to the customer in WhatsApp. The bot already told them a person will reply.',\n].join('\\n');\nreturn [{ json: { text: text.slice(0, 3500), reason: p.reason, label } }];\n"
+      },
+      "id": "f32e3bf9-616c-e6d6-2676-33c0a8b979a9",
+      "name": "Build Staff Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "REPLACE_ME_CHANNEL_ID",
+          "mode": "id"
+        },
+        "text": "={{ $json.text }}",
+        "otherOptions": {}
+      },
+      "id": "7a626897-f127-b82b-cfd3-6694de44b2d2",
+      "name": "Post to Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        160,
+        -60
+      ],
+      "credentials": {
+        "slackApi": {
+          "id": "REPLACE_ME",
+          "name": "Slack account (placeholder)"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "chatId": "REPLACE_ME_CHAT_ID",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "82080143-e511-b4d5-bf15-33dc5d10687f",
+      "name": "Post to Telegram (optional)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        160,
+        100
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_ME",
+          "name": "Telegram bot (placeholder)"
+        }
+      },
+      "disabled": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Handoff Input": {
+      "main": [
+        [
+          {
+            "node": "Build Staff Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Staff Message": {
+      "main": [
+        [
+          {
+            "node": "Post to Slack",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Post to Telegram (optional)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateNote": "Demo on made-up data. Not imported into or run on a live n8n instance and not connected to a live WhatsApp number. No credential is configured: every credential is a placeholder with id REPLACE_ME."
+  }
+}

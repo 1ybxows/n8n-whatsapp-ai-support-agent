@@ -1,0 +1,288 @@
+{
+  "name": "Cedar Course Co. - Order Lookup (tool, demo, not live)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Order lookup tool\n1. Ask the payment API (placeholder URL api.payments.example.com).\n2. If that fails or finds nothing, read the \"Orders\" sheet instead (the demo data source).\n3. Share details only if the order belongs to the WhatsApp number that asked.\n\nPlaceholder API answer shape: { id, status, product: { name }, amount, currency, created_at, customer: { phone, name } }.",
+        "width": 560,
+        "height": 250
+      },
+      "id": "e971280d-9dfb-b10b-46bc-d3cb38f26020",
+      "name": "Read Me",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "order_id",
+              "type": "string"
+            },
+            {
+              "name": "customer_phone",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "370df3bd-bf2a-7560-744e-439f101da20b",
+      "name": "Tool Input",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate Order ID: only CC-1234 style ids (4 to 6 digits) go on to the payment API / sheet.\nreturn $input.all().map((item) => {\n  const orderId = String(item.json.order_id ?? '').trim().toUpperCase();\n  return {\n    json: {\n      order_id: orderId,\n      customer_phone: String(item.json.customer_phone ?? ''),\n      valid: /^CC-\\d{4,6}$/.test(orderId),\n    },\n  };\n});\n"
+      },
+      "id": "5824a118-e608-10d6-53f4-9008b3711e7a",
+      "name": "Validate Order ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -180,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f34c9c22-ca33-441b-2fdb-bb78e06423d5",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e09e92bb-a40b-f2df-89de-7d25d2ef1743",
+      "name": "Valid ID?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        40,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.payments.example.com/v1/orders/{{ $json.order_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 8000
+        }
+      },
+      "id": "4e3fef1e-e889-83fe-b06e-2f093d8f66e9",
+      "name": "Payment API Lookup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        -80
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ME",
+          "name": "Payment API key (placeholder)"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_ME_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Orders",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "order_id",
+              "lookupValue": "={{ $('Validate Order ID').item.json.order_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5ddc15fd-eeb8-845d-bdad-3b9177afd8ab",
+      "name": "Orders Sheet Fallback",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        480,
+        80
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Sheets account (placeholder)"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize Order: maps the payment-API answer OR the Orders-sheet row into one shape.\n// Details are shared only when the order belongs to the WhatsApp number that is asking.\nconst req = $('Validate Order ID').first().json;\nconst digits = (s) => String(s ?? '').replace(/\\D/g, '');\nconst rows = $input.all().map((i) => i.json).filter((r) => r && Object.keys(r).length > 0 && !r.error);\n\nconst notFound = {\n  json: {\n    found: false,\n    owner_match: false,\n    order_id: req.order_id,\n    message: `No order ${req.order_id} was found. Ask the customer to check the number in their receipt email.`,\n  },\n};\nconst toRec = (r) =>\n  r.id\n    ? { source: 'payment_api', order_id: String(r.id).toUpperCase(), phone: r.customer?.phone, name: r.customer?.name, product: r.product?.name ?? r.product, amount: Number(r.amount), currency: r.currency || 'USD', purchased_at: r.created_at, status: String(r.status || '').toLowerCase() }\n    : r.order_id\n      ? { source: 'orders_sheet', order_id: String(r.order_id).toUpperCase(), phone: r.customer_phone, name: r.customer_name, product: r.product, amount: Number(r.amount), currency: r.currency || 'USD', purchased_at: r.purchased_at, status: String(r.status || '').toLowerCase() }\n      : null;\n\nconst rec = rows.map(toRec).find((x) => x && x.order_id === req.order_id);\nif (!rec) return [notFound];\nif (digits(rec.phone) !== digits(req.customer_phone)) {\n  return [{\n    json: {\n      found: true,\n      owner_match: false,\n      order_id: rec.order_id,\n      message: 'An order with that number exists but is not linked to this WhatsApp number. Do not share any details. Offer to hand the chat to a team member.',\n    },\n  }];\n}\nreturn [{\n  json: {\n    found: true,\n    owner_match: true,\n    source: rec.source,\n    order_id: rec.order_id,\n    customer_name: rec.name,\n    product: rec.product,\n    amount: rec.amount,\n    currency: rec.currency,\n    status: rec.status,\n    purchased_at: rec.purchased_at,\n    message: `Order ${rec.order_id}: ${rec.product}, ${rec.amount} ${rec.currency}, status ${rec.status}, bought on ${String(rec.purchased_at).slice(0, 10)}.`,\n  },\n}];\n"
+      },
+      "id": "99e4f88d-e989-ae1e-97e2-49a71be771db",
+      "name": "Normalize Order",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "155040cb-3239-0b1f-b501-8fe9583cc4ef",
+              "name": "found",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "089b0904-1ef2-79b9-c03f-d4d1258909f7",
+              "name": "order_id",
+              "value": "={{ $json.order_id }}",
+              "type": "string"
+            },
+            {
+              "id": "307b436c-40de-3143-48ac-547137d53f08",
+              "name": "message",
+              "value": "=That does not look like an order number. Order numbers look like CC-1234. Ask the customer to check their receipt email.",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "a99743ac-3365-f157-b4b8-dfe81e3b523b",
+      "name": "Invalid ID Result",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        260,
+        200
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Tool Input": {
+      "main": [
+        [
+          {
+            "node": "Validate Order ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Order ID": {
+      "main": [
+        [
+          {
+            "node": "Valid ID?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid ID?": {
+      "main": [
+        [
+          {
+            "node": "Payment API Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Invalid ID Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Payment API Lookup": {
+      "main": [
+        [
+          {
+            "node": "Normalize Order",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Orders Sheet Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Orders Sheet Fallback": {
+      "main": [
+        [
+          {
+            "node": "Normalize Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateNote": "Demo on made-up data. Not imported into or run on a live n8n instance and not connected to a live WhatsApp number. No credential is configured: every credential is a placeholder with id REPLACE_ME."
+  }
+}

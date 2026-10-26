@@ -1,0 +1,39 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "100000000000001",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15550100000",
+              "phone_number_id": "100000000000002"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Priya Menon"
+                },
+                "wa_id": "15550100106"
+              }
+            ],
+            "messages": [
+              {
+                "from": "15550100106",
+                "id": "wamid.DEMO-0005",
+                "timestamp": "1792900300",
+                "type": "text",
+                "text": {
+                  "body": "This is the WORST service!!! I paid and nothing works. Scam. I want my money back NOW"
+                }
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

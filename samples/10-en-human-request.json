@@ -1,0 +1,39 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "100000000000001",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15550100000",
+              "phone_number_id": "100000000000002"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Lena Park"
+                },
+                "wa_id": "15550100110"
+              }
+            ],
+            "messages": [
+              {
+                "from": "15550100110",
+                "id": "wamid.DEMO-0010",
+                "timestamp": "1792900600",
+                "type": "text",
+                "text": {
+                  "body": "Can I talk to a real person please?"
+                }
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

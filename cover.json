@@ -1,0 +1,10 @@
+{
+  "title": "WhatsApp AI Support Agent",
+  "subtitle": "n8n: FAQ, order lookup, refund logging and human handoff, in English and Arabic",
+  "label": "Sample / personal project",
+  "figures": [
+    { "value": "145/145", "label": "offline checks passed" },
+    { "value": "24", "label": "made-up WhatsApp payloads (EN + AR)" },
+    { "value": "6", "label": "import-ready workflows (not yet imported)" }
+  ]
+}

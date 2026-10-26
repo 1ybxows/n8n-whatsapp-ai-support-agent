@@ -1,0 +1,132 @@
+{
+  "01-en-faq-access.json": {
+    "route": "agent",
+    "language": "en",
+    "topic": "access"
+  },
+  "02-en-faq-refund-policy.json": {
+    "route": "agent",
+    "language": "en",
+    "topic": "refund"
+  },
+  "03-en-order-status.json": {
+    "route": "agent",
+    "language": "en",
+    "topic": "order_status",
+    "orderId": "CC-1042"
+  },
+  "04-en-refund-ask.json": {
+    "route": "agent",
+    "language": "en",
+    "topic": "refund",
+    "orderId": "CC-1042"
+  },
+  "05-en-angry.json": {
+    "route": "escalate",
+    "reason": "unhappy",
+    "language": "en",
+    "topic": "refund"
+  },
+  "06-en-gibberish.json": {
+    "route": "reply_only",
+    "reason": "unclear",
+    "language": "en",
+    "topic": "other"
+  },
+  "07-en-empty.json": {
+    "route": "ignore",
+    "reason": "empty",
+    "language": "und"
+  },
+  "08-en-voice-note.json": {
+    "route": "reply_only",
+    "reason": "unsupported_type",
+    "language": "und"
+  },
+  "09-en-duplicate.json": {
+    "route": "ignore",
+    "reason": "duplicate",
+    "language": "en"
+  },
+  "10-en-human-request.json": {
+    "route": "escalate",
+    "reason": "human_requested",
+    "language": "en",
+    "topic": "other"
+  },
+  "11-en-delivery-receipt.json": {
+    "produces": false
+  },
+  "12-en-gibberish-twice.json": {
+    "route": "escalate",
+    "reason": "two_failed_answers",
+    "language": "en",
+    "topic": "other"
+  },
+  "13-ar-faq-access.json": {
+    "route": "agent",
+    "language": "ar",
+    "topic": "access"
+  },
+  "14-ar-faq-certificate.json": {
+    "route": "agent",
+    "language": "ar",
+    "topic": "certificate"
+  },
+  "15-ar-order-status.json": {
+    "route": "agent",
+    "language": "ar",
+    "topic": "order_status",
+    "orderId": "CC-1077"
+  },
+  "16-ar-refund-ask.json": {
+    "route": "agent",
+    "language": "ar",
+    "topic": "refund",
+    "orderId": "CC-2003"
+  },
+  "17-ar-angry.json": {
+    "route": "escalate",
+    "reason": "unhappy",
+    "language": "ar",
+    "topic": "refund"
+  },
+  "18-ar-gibberish.json": {
+    "route": "reply_only",
+    "reason": "unclear",
+    "language": "ar",
+    "topic": "other"
+  },
+  "19-ar-empty.json": {
+    "route": "ignore",
+    "reason": "empty",
+    "language": "und"
+  },
+  "20-ar-voice-note.json": {
+    "route": "reply_only",
+    "reason": "unsupported_type",
+    "language": "und"
+  },
+  "21-ar-duplicate.json": {
+    "route": "ignore",
+    "reason": "duplicate",
+    "language": "ar"
+  },
+  "22-ar-human-request.json": {
+    "route": "escalate",
+    "reason": "human_requested",
+    "language": "ar",
+    "topic": "other"
+  },
+  "23-ar-image-attachment.json": {
+    "route": "reply_only",
+    "reason": "unsupported_type",
+    "language": "und"
+  },
+  "24-ar-gibberish-twice.json": {
+    "route": "escalate",
+    "reason": "two_failed_answers",
+    "language": "ar",
+    "topic": "other"
+  }
+}

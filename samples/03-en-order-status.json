@@ -1,0 +1,39 @@
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "100000000000001",
+      "changes": [
+        {
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "15550100000",
+              "phone_number_id": "100000000000002"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "Sam Carter"
+                },
+                "wa_id": "15550100101"
+              }
+            ],
+            "messages": [
+              {
+                "from": "15550100101",
+                "id": "wamid.DEMO-0003",
+                "timestamp": "1792900180",
+                "type": "text",
+                "text": {
+                  "body": "Where is my order CC-1042?"
+                }
+              }
+            ]
+          },
+          "field": "messages"
+        }
+      ]
+    }
+  ]
+}

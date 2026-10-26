@@ -1,0 +1,726 @@
+{
+  "name": "Cedar Course Co. - WhatsApp Support Agent (demo, not live)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Demo on made-up data\nCedar Course Co. is a fictional store. This workflow has NOT been run on a live n8n or a live WhatsApp number.\n\n1. Rules run first (code, no AI): duplicates, empty, voice notes, anger, \"human please\", gibberish.\n2. Only normal questions reach the AI Agent. It has 3 tools: FAQ, order lookup, refund request.\n3. The agent marks doubt with [[UNSURE]] or [[HANDOFF:reason]]. Code reads those marks.\n4. Anything risky goes to a person through the Escalation workflow.\n\nSet the Error Workflow of every workflow to \"Error Handler\" in Workflow Settings (UI only).",
+        "width": 560,
+        "height": 330
+      },
+      "id": "ffb0402e-95b9-9e50-7ace-6521b25063b6",
+      "name": "Read Me",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -700,
+        -440
+      ]
+    },
+    {
+      "parameters": {
+        "updates": [
+          "messages"
+        ]
+      },
+      "id": "ff141925-9e4e-8619-7c70-040ec3def8c3",
+      "name": "WhatsApp Trigger",
+      "type": "n8n-nodes-base.whatsAppTrigger",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        0
+      ],
+      "credentials": {
+        "whatsAppTriggerApi": {
+          "id": "REPLACE_ME",
+          "name": "WhatsApp trigger account (placeholder)"
+        }
+      },
+      "webhookId": "dc1bd441-8772-66cb-fd47-d9e26911e1c3"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize Message: one output item per WhatsApp message in the webhook payload.\n// Accepts the full Cloud API webhook body (object / entry / changes / value) or the\n// bare `value` object. Status-only updates (delivered / read receipts) produce no items.\nconst out = [];\nfor (const item of $input.all()) {\n  const raw = item.json || {};\n  const value = raw.entry?.[0]?.changes?.[0]?.value ?? raw;\n  const messages = Array.isArray(value.messages) ? value.messages : [];\n  const contacts = Array.isArray(value.contacts) ? value.contacts : [];\n  const phoneNumberId = String(value.metadata?.phone_number_id ?? '');\n  for (const m of messages) {\n    const contact = contacts.find((c) => c.wa_id === m.from) ?? contacts[0] ?? {};\n    const type = String(m.type ?? 'unknown');\n    let text = '';\n    if (type === 'text') text = m.text?.body ?? '';\n    else if (type === 'button') text = m.button?.text ?? '';\n    else if (type === 'interactive') text = m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title ?? '';\n    text = String(text).replace(/\\s+/g, ' ').trim();\n    const ts = Number(m.timestamp);\n    const waId = String(m.from ?? '').replace(/\\D/g, '');\n    out.push({\n      json: {\n        messageId: String(m.id ?? ''),\n        waId,\n        phone: waId ? '+' + waId : '',\n        name: String(contact.profile?.name ?? '').trim() || 'Customer',\n        phoneNumberId,\n        type,\n        supported: ['text', 'button', 'interactive'].includes(type),\n        text,\n        receivedAt: Number.isFinite(ts) && ts > 0 ? new Date(ts * 1000).toISOString() : null,\n      },\n    });\n  }\n}\nreturn out;\n"
+      },
+      "id": "641b88e5-2b90-bdcd-1083-a6e0880899ec",
+      "name": "Normalize Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -420,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Detect Language: Arabic or English by counting letters of each script.\n// 'und' (undetermined) when the message has no letters at all (emoji, voice note, empty).\nconst AR = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/g;\nconst LAT = /[A-Za-z]/g;\nreturn $input.all().map((item) => {\n  const text = String(item.json.text ?? '');\n  const ar = (text.match(AR) || []).length;\n  const en = (text.match(LAT) || []).length;\n  const language = ar + en === 0 ? 'und' : ar > en ? 'ar' : 'en';\n  return { json: { ...item.json, language, scriptCounts: { ar, en } } };\n});\n"
+      },
+      "id": "37b76c91-a0f1-3b6b-a86f-bae262866391",
+      "name": "Detect Language",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Route Message: deterministic rules that run BEFORE the AI agent.\n// route: agent | escalate | reply_only | ignore\n// Workflow static data (kept only while the workflow is active) holds duplicate ids,\n// a failed-answer counter per customer and a short chat history for handoffs.\nconst MAX_SEEN = 500;\nconst MAX_HISTORY = 6;\nconst FAIL_LIMIT = 2;\n\nconst store = $getWorkflowStaticData('global');\nstore.seenIds = store.seenIds || [];\nstore.fails = store.fails || {};\nstore.history = store.history || {};\n\nconst normAr = (s) =>\n  String(s).replace(/[ً-ٰٟـ]/g, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');\nconst arTokens = (norm) =>\n  norm.split(/[^؀-ۿa-z0-9-]+/).filter(Boolean).map((t) => t.replace(/^(وال|بال|لل|ال)(?=.{2,})/, ''));\nconst arHit = (norm, tokens, kw) => (kw.includes(' ') || kw.length >= 4 ? norm.includes(kw) : tokens.includes(kw));\n\nconst NOTICE = {\n  en: \"I'm sorry about this. I've passed your chat to a team member, who will reply here as soon as possible. Please don't send card details in this chat.\",\n  ar: 'أعتذر عن ذلك. حوّلت محادثتك إلى أحد أعضاء الفريق وسيرد عليك هنا في أقرب وقت. من فضلك لا ترسل بيانات بطاقتك في هذه المحادثة.',\n};\nNOTICE.und = NOTICE.en + '\\n\\n' + NOTICE.ar;\nconst UNSUPPORTED = {\n  en: 'I can only read text messages for now. Please type your question and I will help.',\n  ar: 'أستطيع قراءة الرسائل النصية فقط حاليًا. من فضلك اكتب سؤالك وسأساعدك.',\n};\nUNSUPPORTED.und = UNSUPPORTED.en + '\\n\\n' + UNSUPPORTED.ar;\nconst UNCLEAR = {\n  en: 'Sorry, I did not understand that. Could you write your question in a few words? You can also type \"human\" to reach a team member.',\n  ar: 'عذرًا، لم أفهم رسالتك. هل يمكنك كتابة سؤالك بكلمات قليلة؟ يمكنك أيضًا كتابة \"موظف\" للتحدث مع أحد أعضاء الفريق.',\n};\nUNCLEAR.und = UNCLEAR.en + '\\n\\n' + UNCLEAR.ar;\n\nconst STRONG_EN = /\\b(scam\\w*|fraud\\w*|lawyer\\w*|sue|chargeback|rip(?:ped)?[- ]?off|steal\\w*|stole)\\b/i;\nconst MILD_EN = /\\b(worst|terrible|awful|ridiculous|unacceptable|furious|disgusting|useless|angry|fed up|nothing works|waste of (?:my )?money)\\b/i;\nconst STRONG_AR = ['نصب', 'نصاب', 'احتيال', 'حرامي', 'سرقه', 'محامي', 'اقاضي'];\nconst MILD_AR = ['سيئه جدا', 'خدمه سيئه', 'اسوا', 'اسوء', 'غاضب', 'زفت', 'مهزله', 'غير مقبول', 'مو معقول', 'مش معقول', 'كذابين'];\nconst HUMAN_EN = /\\b(human|real person|live agent|representative|manager|operator)\\b|\\b(?:talk|speak|chat)\\s+(?:to|with)\\s+(?:a\\s+|an\\s+|the\\s+)?(?:real\\s+|live\\s+)?(?:person|human|someone|agent|representative|manager)\\b/i;\nconst HUMAN_AR = ['موظف', 'مدير', 'مسؤول', 'شخص حقيقي', 'انسان', 'بشري'];\n\nconst TOPICS = [\n  ['refund', /refund|money back|chargeback|cancel/i, ['استرجاع', 'استرداد', 'ارجاع', 'مالي', 'الغاء', 'رد المبلغ']],\n  ['certificate', /certificat|diploma/i, ['شهاده', 'شهادات']],\n  ['access', /access|log ?in|sign ?in|password|link|download|can'?t open|cannot open|didn'?t (?:get|receive)/i, ['دخول', 'ادخل', 'تسجيل الدخول', 'كلمه المرور', 'رابط', 'تحميل', 'افتح']],\n  ['order_status', /\\border\\b|\\bCC-\\d{4,6}\\b|receipt|invoice|status|tracking|delivery/i, ['طلب', 'طلبي', 'فاتوره', 'ايصال', 'حاله']],\n  ['payment', /\\bpay|payment|paid|card|paypal|visa|charged|declined/i, ['دفع', 'بطاقه', 'مدفوع']],\n  ['pricing', /price|cost|discount|coupon|how much|bundle/i, ['سعر', 'اسعار', 'تكلفه', 'خصم', 'كوبون', 'كم']],\n  ['content', /lesson|module|beginner|syllabus|hours|level|learn|language|subtitle|device/i, ['دروس', 'مستوي', 'محتوي', 'ساعات', 'مبتدئ', 'لغه', 'ترجمه', 'جهاز']],\n];\n\nfunction detectTopic(raw, norm, tokens) {\n  for (const [topic, re, ar] of TOPICS) {\n    if (re.test(raw) || ar.some((k) => arHit(norm, tokens, k))) return topic;\n  }\n  return 'other';\n}\n\nfunction angerScore(raw, norm) {\n  let score = 0;\n  if (STRONG_EN.test(raw) || STRONG_AR.some((k) => norm.includes(k))) score += 2;\n  if (MILD_EN.test(raw) || MILD_AR.some((k) => norm.includes(k))) score += 1;\n  const latin = raw.replace(/[^A-Za-z]/g, '');\n  if (latin.length >= 12 && latin.replace(/[^A-Z]/g, '').length / latin.length >= 0.6) score += 1;\n  if ((raw.match(/!/g) || []).length >= 3) score += 1;\n  return score;\n}\n\nfunction isUnclear(raw) {\n  const letters = raw.replace(/[^A-Za-z؀-ۿ]/g, '');\n  if (letters.length < 2) return true;\n  if (/(.)\\1{3,}/.test(raw.replace(/\\s/g, ''))) return true;\n  if (/[؀-ۿ]/.test(raw)) return false;\n  const tokens = raw.match(/[A-Za-z]{3,}/g) || [];\n  if (!tokens.length) return false;\n  const odd = tokens.filter((t) => !/[aeiouy]/i.test(t) || /[^aeiouy]{5,}/i.test(t)).length;\n  return odd / tokens.length >= 0.5;\n}\n\nconst results = [];\nfor (const item of $input.all()) {\n  const m = item.json;\n  const lang = m.language || 'und';\n  const raw = String(m.text || '');\n  const norm = normAr(raw.toLowerCase());\n  const tokens = arTokens(norm);\n  const orderMatch = raw.match(/\\bCC-\\d{4,6}\\b/i);\n  const out = {\n    ...m,\n    route: 'agent',\n    reason: null,\n    reply: '',\n    escalate: false,\n    outcome: null,\n    topic: detectTopic(raw, norm, tokens),\n    orderId: orderMatch ? orderMatch[0].toUpperCase() : null,\n    sessionKey: m.phone,\n  };\n  const finish = (route, reason, reply, outcome) => {\n    out.route = route;\n    out.reason = reason;\n    out.reply = reply;\n    out.escalate = route === 'escalate';\n    out.outcome = outcome;\n    out.lastMessages = (store.history[m.phone] || []).slice();\n    results.push({ json: out });\n  };\n\n  if (!m.waId) { finish('ignore', 'no_sender', '', 'ignored'); continue; }\n  if (m.messageId) {\n    if (store.seenIds.includes(m.messageId)) { finish('ignore', 'duplicate', '', 'ignored'); continue; }\n    store.seenIds.push(m.messageId);\n    if (store.seenIds.length > MAX_SEEN) store.seenIds.shift();\n  }\n  if (!m.supported) { finish('reply_only', 'unsupported_type', UNSUPPORTED[lang], 'reply_only'); continue; }\n  if (!raw) { finish('ignore', 'empty', '', 'ignored'); continue; }\n\n  const hist = (store.history[m.phone] = store.history[m.phone] || []);\n  hist.push({ from: 'customer', text: raw.slice(0, 300), at: m.receivedAt });\n  while (hist.length > MAX_HISTORY) hist.shift();\n\n  const score = angerScore(raw, norm);\n  out.angerScore = score;\n  if (score >= 2) { finish('escalate', 'unhappy', NOTICE[lang], 'escalated'); continue; }\n  if (HUMAN_EN.test(raw) || HUMAN_AR.some((k) => norm.includes(k))) {\n    finish('escalate', 'human_requested', NOTICE[lang], 'escalated');\n    continue;\n  }\n  if (isUnclear(raw)) {\n    store.fails[m.phone] = (store.fails[m.phone] || 0) + 1;\n    if (store.fails[m.phone] >= FAIL_LIMIT) {\n      store.fails[m.phone] = 0;\n      finish('escalate', 'two_failed_answers', NOTICE[lang], 'escalated');\n    } else {\n      finish('reply_only', 'unclear', UNCLEAR[lang], 'reply_only');\n    }\n    continue;\n  }\n  finish('agent', null, '', null);\n}\nreturn results;\n"
+      },
+      "id": "00c73f19-346c-b445-f839-0558c28dd391",
+      "name": "Route Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        20,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "be03ca56-c197-cb14-9229-0a1efd0c7c8a",
+              "leftValue": "={{ $json.route }}",
+              "rightValue": "agent",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9411339b-b3e0-489e-0bbf-058c1c3e763b",
+      "name": "Needs Agent?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.text }}",
+        "options": {
+          "systemMessage": "=You are the WhatsApp support assistant for Cedar Course Co., a small online store that sells one digital course with a one-time payment. Today is {{ $now.format('DDDD') }}.\n\nThe customer is {{ $json.name }}. Reply in {{ $json.language === 'ar' ? 'Arabic' : 'English' }}. If the customer changes language, change with them.\n\nRules:\n1. Answer only from the search_faq tool, the order tools and the facts in this message. Never guess a price, date or policy. If the tools do not give the answer, say you are not sure and end your reply with [[UNSURE]].\n2. Order questions: call look_up_order with the order number the customer wrote (format CC-1234). If they gave none, ask for it. Share only what the tool returns.\n3. Refunds: you cannot approve refunds. When the customer clearly asks for one and gave an order number, call request_refund with their reason. Repeat the tool answer in plain words and promise nothing else. If the tool says the order is above the automatic limit, end your reply with [[HANDOFF:refund_over_limit]].\n4. If the customer needs something only a person can do (a company invoice, an account or email change, a payment problem, a legal threat), write one short sentence and end with [[HANDOFF:team_task]] or [[HANDOFF:payment_dispute]].\n5. Never ask for or accept card numbers, passwords or one-time codes. If the customer sends them, tell them to delete the message.\n6. Keep answers under 80 words, friendly and plain, with no tables or markdown. One emoji at most.\n7. The marks [[UNSURE]] and [[HANDOFF:reason]] are read by the workflow and removed before the customer sees your message.",
+          "maxIterations": 12
+        }
+      },
+      "id": "8d2fd4e0-393b-0d3b-f34d-878b87435e19",
+      "name": "Customer Support Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        480,
+        -160
+      ],
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "options": {
+          "temperature": 0.2,
+          "maxTokens": 500
+        }
+      },
+      "id": "7c9f9f3c-e578-d98c-c951-9da909857c5b",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        340,
+        220
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "REPLACE_ME",
+          "name": "OpenAI account (placeholder)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.sessionKey }}",
+        "contextWindowLength": 20
+      },
+      "id": "6144dd6d-632e-5c50-da14-103e1834b8db",
+      "name": "Chat Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        520,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "name": "search_faq",
+        "description": "Search the Cedar Course Co. FAQ and policies (access, devices, price, payment methods, refund policy, certificate, course level, invoices, support hours, language). Input: a short search phrase in the customer's own words, English or Arabic, for example \"refund policy\" or \"شهادة\". Returns up to 2 matching FAQ entries, or NO_MATCH when the FAQ has no answer.",
+        "jsCode": "// Search FAQ (Code Tool): the agent passes its search words as `query`; the tool returns a string.\n// KB is copied from kb/faq.md by tools/build.mjs. Matching is plain keyword scoring, no AI and no vector store.\nconst KB = [{\"id\":\"access\",\"keywords_en\":[\"access\",\"sign in\",\"log in\",\"login\",\"email\",\"link\",\"receive\",\"received\",\"after paying\",\"after buying\",\"open the course\"],\"keywords_ar\":[\"دخول\",\"ادخل\",\"اسجل\",\"تسجيل الدخول\",\"رابط\",\"ايميل\",\"بريد\",\"بعد الدفع\",\"بعد الشراء\"],\"q_en\":\"How do I access the course after paying?\",\"a_en\":\"Right after payment we email you a sign-in link from Cedar Course Co. It usually arrives within 10 minutes. Check your spam folder. If nothing arrives after 30 minutes, send me your order number (it looks like CC-1234) and I will check it.\",\"q_ar\":\"كيف أدخل إلى الدورة بعد الدفع؟\",\"a_ar\":\"بعد إتمام الدفع نرسل لك بالبريد الإلكتروني رابط تسجيل الدخول من Cedar Course Co. ويصل عادة خلال 10 دقائق. تحقق من مجلد الرسائل غير المرغوبة. إذا لم يصلك شيء بعد 30 دقيقة، أرسل لي رقم طلبك (يشبه CC-1234) وسأتحقق منه.\"},{\"id\":\"devices\",\"keywords_en\":[\"device\",\"devices\",\"phone\",\"tablet\",\"laptop\",\"computer\",\"app\",\"mobile\",\"browser\",\"watch\"],\"keywords_ar\":[\"جهاز\",\"اجهزه\",\"جوال\",\"هاتف\",\"تابلت\",\"لابتوب\",\"كمبيوتر\",\"تطبيق\",\"متصفح\",\"اشاهد\"],\"q_en\":\"Which devices can I use to watch the lessons?\",\"a_en\":\"Any phone, tablet or computer with a modern web browser. There is no app to install. Lessons stream online, and the PDF workbooks can be downloaded.\",\"q_ar\":\"ما الأجهزة التي يمكنني استخدامها لمشاهدة الدروس؟\",\"a_ar\":\"يمكنك استخدام أي هاتف أو جهاز لوحي أو كمبيوتر فيه متصفح حديث. لا يوجد تطبيق للتثبيت. الدروس تُعرض عبر الإنترنت، ويمكن تنزيل ملفات PDF.\"},{\"id\":\"lifetime\",\"keywords_en\":[\"lifetime\",\"forever\",\"subscription\",\"monthly\",\"recurring\",\"one-time\",\"one time\",\"expire\",\"expires\",\"updates\"],\"keywords_ar\":[\"مدى الحياة\",\"دائم\",\"اشتراك\",\"شهري\",\"مره واحده\",\"دفعه واحده\",\"تنتهي\",\"تحديثات\"],\"q_en\":\"Is it a one-time payment, and does access expire?\",\"a_en\":\"Yes, it is a one-time payment. There is no subscription. You keep lifetime access, including future updates to the lessons.\",\"q_ar\":\"هل الدفع مرة واحدة وهل تنتهي صلاحية الوصول؟\",\"a_ar\":\"نعم، الدفع مرة واحدة ولا يوجد اشتراك. تحتفظ بالوصول مدى الحياة، بما في ذلك التحديثات القادمة على الدروس.\"},{\"id\":\"price\",\"keywords_en\":[\"price\",\"prices\",\"cost\",\"how much\",\"discount\",\"coupon\",\"offer\",\"bundle\",\"team\",\"license\",\"student\"],\"keywords_ar\":[\"سعر\",\"اسعار\",\"تكلفه\",\"كم\",\"خصم\",\"كوبون\",\"عرض\",\"باقه\",\"فريق\",\"ترخيص\",\"طالب\"],\"q_en\":\"How much does the course cost, and is there a discount?\",\"a_en\":\"The course is $89 (USD). The course with the workbook bundle is $129. A team license for 5 seats is $349. We do not run coupon codes at the moment.\",\"q_ar\":\"كم سعر الدورة وهل يوجد خصم؟\",\"a_ar\":\"سعر الدورة 89 دولارًا أمريكيًا. الدورة مع حزمة الكتيّب 129 دولارًا. ترخيص الفريق لخمسة مقاعد 349 دولارًا. لا نقدّم كوبونات خصم حاليًا.\"},{\"id\":\"refund-policy\",\"keywords_en\":[\"refund policy\",\"refund\",\"refunds\",\"money back\",\"return\",\"cancel\",\"guarantee\"],\"keywords_ar\":[\"سياسه الاسترجاع\",\"استرجاع\",\"استرداد\",\"ارجاع\",\"الغاء\",\"ضمان\"],\"q_en\":\"What is your refund policy?\",\"a_en\":\"You can ask for a full refund within 14 days of buying, for any reason. I can log the request for you; a team member approves it within 2 business days and the money goes back to the original payment method. After 14 days we cannot refund. Team licenses are always reviewed by a person.\",\"q_ar\":\"ما هي سياسة الاسترجاع لديكم؟\",\"a_ar\":\"يمكنك طلب استرداد كامل المبلغ خلال 14 يومًا من الشراء ولأي سبب. أستطيع تسجيل الطلب لك، ويوافق عليه أحد أعضاء الفريق خلال يومي عمل، ويعود المبلغ إلى وسيلة الدفع الأصلية. بعد 14 يومًا لا يمكن الاسترداد. تراجع طلبات ترخيص الفريق دائمًا من قبل شخص.\"},{\"id\":\"certificate\",\"keywords_en\":[\"certificate\",\"certificates\",\"certification\",\"diploma\",\"proof\",\"completion\"],\"keywords_ar\":[\"شهاده\",\"شهادات\",\"اثبات\",\"اتمام\",\"انهاء\"],\"q_en\":\"Do I get a certificate?\",\"a_en\":\"Yes. When you finish all lessons and pass the final quiz (80% or more), you can download a PDF certificate of completion from your account.\",\"q_ar\":\"هل أحصل على شهادة؟\",\"a_ar\":\"نعم. عند إنهاء جميع الدروس واجتياز الاختبار النهائي (80% أو أكثر) يمكنك تنزيل شهادة إتمام بصيغة PDF من حسابك.\"},{\"id\":\"level\",\"keywords_en\":[\"beginner\",\"beginners\",\"level\",\"experience\",\"prerequisites\",\"requirements\",\"hours\",\"long\",\"modules\",\"syllabus\",\"content\",\"learn\"],\"keywords_ar\":[\"مبتدئ\",\"مبتدئين\",\"مستوى\",\"خبره\",\"متطلبات\",\"ساعات\",\"مده\",\"وحدات\",\"محتوى\",\"اتعلم\"],\"q_en\":\"Is the course suitable for beginners, and how long is it?\",\"a_en\":\"Yes, it is made for beginners and needs no prior experience. It has 6 modules and about 8 hours of video, plus a PDF workbook for each module.\",\"q_ar\":\"هل الدورة مناسبة للمبتدئين وكم مدتها؟\",\"a_ar\":\"نعم، الدورة مصممة للمبتدئين ولا تحتاج إلى خبرة سابقة. تضم 6 وحدات وحوالي 8 ساعات من الفيديو، مع كتيّب PDF لكل وحدة.\"},{\"id\":\"payment-methods\",\"keywords_en\":[\"payment methods\",\"payment\",\"pay\",\"paypal\",\"visa\",\"mastercard\",\"card\",\"credit card\",\"method\",\"methods\",\"installments\"],\"keywords_ar\":[\"طرق الدفع\",\"دفع\",\"ادفع\",\"باي بال\",\"فيزا\",\"ماستركارد\",\"بطاقه\",\"تقسيط\"],\"q_en\":\"Which payment methods do you accept?\",\"a_en\":\"We accept Visa, Mastercard and PayPal. Please never send card details in this chat; payment happens only on our secure checkout page. We do not offer installments.\",\"q_ar\":\"ما طرق الدفع المقبولة؟\",\"a_ar\":\"نقبل فيزا وماستركارد وباي بال. من فضلك لا ترسل بيانات بطاقتك في هذه المحادثة؛ الدفع يتم فقط عبر صفحة الدفع الآمنة لدينا. لا نقدّم الدفع بالتقسيط.\"},{\"id\":\"invoice\",\"keywords_en\":[\"invoice\",\"receipt\",\"vat\",\"tax\",\"company\",\"billing\",\"bill\"],\"keywords_ar\":[\"فاتوره\",\"ايصال\",\"ضريبه\",\"شركه\",\"فواتير\"],\"q_en\":\"Can I get an invoice or receipt?\",\"a_en\":\"A receipt is emailed automatically after payment. For a company invoice with your business name, send me the order number and the name to put on it, and the team will prepare it.\",\"q_ar\":\"هل يمكنني الحصول على فاتورة أو إيصال؟\",\"a_ar\":\"يصلك إيصال بالبريد الإلكتروني تلقائيًا بعد الدفع. للحصول على فاتورة باسم شركتك، أرسل لي رقم الطلب والاسم المطلوب وسيجهزها الفريق.\"},{\"id\":\"support-hours\",\"keywords_en\":[\"support hours\",\"hours\",\"available\",\"availability\",\"contact\",\"weekend\",\"working days\",\"talk\",\"speak\",\"person\",\"reply\"],\"keywords_ar\":[\"ساعات الدوام\",\"دوام\",\"متاح\",\"دعم\",\"تواصل\",\"عطله\",\"متى\",\"تحدث\",\"شخص\",\"رد\"],\"q_en\":\"When can I talk to a person?\",\"a_en\":\"This chat answers at any time. Team members reply Monday to Friday, 09:00 to 17:00 (UTC). Messages sent outside those hours are answered the next working day.\",\"q_ar\":\"متى يمكنني التحدث مع شخص؟\",\"a_ar\":\"هذه المحادثة تجيب في أي وقت. يرد أعضاء الفريق من الاثنين إلى الجمعة من 09:00 إلى 17:00 بالتوقيت العالمي. الرسائل خارج هذه الأوقات يُرد عليها في يوم العمل التالي.\"},{\"id\":\"language\",\"keywords_en\":[\"arabic\",\"english\",\"language\",\"languages\",\"subtitles\",\"subtitle\",\"translated\"],\"keywords_ar\":[\"عربي\",\"عربيه\",\"انجليزي\",\"انجليزيه\",\"لغه\",\"ترجمه\",\"ترجمات\"],\"q_en\":\"Which language are the lessons in?\",\"a_en\":\"The lessons are in English with Arabic subtitles. This support chat works in English and Arabic.\",\"q_ar\":\"بأي لغة الدروس؟\",\"a_ar\":\"الدروس باللغة الإنجليزية مع ترجمة عربية. وهذه المحادثة تدعم العربية والإنجليزية.\"}];\nconst norm = (s) =>\n  String(s).toLowerCase().replace(/[ً-ٰٟـ]/g, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي')\n    .replace(/[^\\p{L}\\p{N}\\s-]/gu, ' ').replace(/\\s+/g, ' ').trim();\nconst STOP = new Set(['the', 'and', 'for', 'you', 'your', 'are', 'can', 'how', 'what', 'which', 'does', 'this', 'that', 'with', 'have', 'from', 'about', 'please', 'any', 'get', 'got', 'did', 'not', 'its', 'was', 'who', 'where', 'when', 'will', 'would', 'could', 'should', 'there', 'their', 'than', 'then', 'into', 'had', 'has', 'one', 'out', 'just', 'هل', 'ما', 'ماذا', 'كيف', 'في', 'من', 'الي', 'علي', 'عن', 'مع', 'هذا', 'هذه', 'انا', 'لدي', 'ان', 'او', 'لا', 'نعم', 'ثم', 'قد', 'كل', 'قبل', 'هو', 'هي', 'هم', 'لي', 'لك']);\nconst stem = (t) => (/[؀-ۿ]/.test(t) ? t.replace(/^(وال|بال|لل|ال)(?=.{3,})/, '') : t.length > 4 ? t.replace(/s$/, '') : t);\nconst tokens = (s) => norm(s).split(' ').filter((t) => t.length >= 3 && !STOP.has(t)).map(stem);\n\nconst prepared = KB.map((e) => {\n  const kw = [...e.keywords_en, ...e.keywords_ar].map(norm);\n  return {\n    e,\n    kwTokens: new Set(kw.flatMap((k) => tokens(k))),\n    phrases: kw.filter((k) => k.includes(' ')),\n    qTokens: new Set(tokens(e.q_en + ' ' + e.q_ar)),\n  };\n});\n\nconst nq = norm(query);\nconst qt = [...new Set(tokens(query))];\nconst scored = prepared\n  .map((p) => {\n    let score = 0;\n    for (const t of qt) {\n      if (p.kwTokens.has(t)) score += 3;\n      if (p.qTokens.has(t)) score += 1;\n    }\n    for (const ph of p.phrases) if (nq.includes(ph)) score += 4;\n    return { p, score };\n  })\n  .sort((a, b) => b.score - a.score);\n\nif (!scored.length || scored[0].score < 3) {\n  return 'NO_MATCH: the FAQ has no answer for this. Do not guess. Tell the customer you are not sure and end your reply with [[UNSURE]].';\n}\nconst isAr = /[؀-ۿ]/.test(query);\nconst picked = scored.filter((s) => s.score >= Math.max(3, scored[0].score * 0.6)).slice(0, 2);\nreturn (\n  'FAQ matches. Answer only from these, in the customer\\'s language:\\n\\n' +\n  picked.map(({ p: { e } }) => `[${e.id}] Q: ${isAr ? e.q_ar : e.q_en}\\nA: ${isAr ? e.a_ar : e.a_en}`).join('\\n\\n')\n);\n"
+      },
+      "id": "0a94c8d9-c2ee-3e3b-8d01-4a0059474f03",
+      "name": "Search FAQ",
+      "type": "@n8n/n8n-nodes-langchain.toolCode",
+      "typeVersion": 1.3,
+      "position": [
+        700,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "name": "look_up_order",
+        "description": "Look up ONE order by its order number (format CC-1234). Use when the customer asks where their order is, whether a payment went through, or what they bought, and they gave an order number (ask for it if not). Returns status, product, amount and purchase date, only when the order belongs to the customer's WhatsApp number. Never guess an order number.",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_ME_ORDER_LOOKUP_WORKFLOW_ID",
+          "mode": "id",
+          "cachedResultName": "Cedar Course Co. - Order Lookup (tool, demo)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "order_id": "={{ $fromAI('order_id', 'The order number the customer wrote, format CC-1234', 'string') }}",
+            "customer_phone": "={{ $('Route Message').item.json.phone }}"
+          },
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "dd314266-9848-3883-91e1-803df5922af7",
+      "name": "Look Up Order",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "name": "request_refund",
+        "description": "Log a refund REQUEST for one order after the customer clearly asks for a refund and gave an order number. The system itself checks ownership, the 14-day window and the automatic limit; you cannot change its decision. Returns what happened and the exact meaning to tell the customer. Parameters: order_id (format CC-1234); reason (the customer's reason in one short English sentence).",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_ME_REFUND_REQUEST_WORKFLOW_ID",
+          "mode": "id",
+          "cachedResultName": "Cedar Course Co. - Refund Request (tool, demo)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "order_id": "={{ $fromAI('order_id', 'The order number the customer wrote, format CC-1234', 'string') }}",
+            "reason": "={{ $fromAI('reason', 'Why the customer wants a refund, one short sentence in English', 'string') }}",
+            "customer_phone": "={{ $('Route Message').item.json.phone }}",
+            "customer_name": "={{ $('Route Message').item.json.name }}",
+            "message_id": "={{ $('Route Message').item.json.messageId }}",
+            "language": "={{ $('Route Message').item.json.language }}"
+          },
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "31f17994-c0b5-6bb3-5e3a-b151d6a01e20",
+      "name": "Request Refund",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        1060,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process Agent Reply (Run Once for Each Item): reads the markers the agent was told to use,\n//   [[UNSURE]]            it could not answer from the FAQ, order data or policies\n//   [[HANDOFF:reason]]    a person must take over\n// strips them, counts failed answers, and decides whether to escalate.\nconst ctx = $('Route Message').item.json;\nconst store = $getWorkflowStaticData('global');\nstore.fails = store.fails || {};\nstore.history = store.history || {};\nconst lang = ctx.language || 'und';\n\nconst NOTICE = {\n  en: \"I'm sorry about this. I've passed your chat to a team member, who will reply here as soon as possible. Please don't send card details in this chat.\",\n  ar: 'أعتذر عن ذلك. حوّلت محادثتك إلى أحد أعضاء الفريق وسيرد عليك هنا في أقرب وقت. من فضلك لا ترسل بيانات بطاقتك في هذه المحادثة.',\n};\nNOTICE.und = NOTICE.en + '\\n\\n' + NOTICE.ar;\nconst REPHRASE = {\n  en: 'I am not sure about that one, and I do not want to guess. Could you rephrase it, or type \"human\" to reach a team member?',\n  ar: 'لست متأكدًا من ذلك ولا أريد التخمين. هل يمكنك إعادة صياغة سؤالك، أو كتابة \"موظف\" للتحدث مع أحد أعضاء الفريق؟',\n};\nREPHRASE.und = REPHRASE.en + '\\n\\n' + REPHRASE.ar;\n\nconst raw = String($input.item.json.output ?? '').trim();\nconst handoff = raw.match(/\\[\\[HANDOFF(?::([a-z_]+))?\\]\\]/i);\nconst unsure = /\\[\\[UNSURE\\]\\]/i.test(raw);\nlet reply = raw.replace(/\\[\\[(?:HANDOFF(?::[a-z_]+)?|UNSURE)\\]\\]/gi, '').trim();\n\nlet escalate = false;\nlet reason = null;\nlet outcome = 'resolved';\nif (handoff) {\n  escalate = true;\n  reason = handoff[1] ? handoff[1].toLowerCase() : 'agent_handoff';\n  outcome = 'escalated';\n  store.fails[ctx.phone] = 0;\n} else if (unsure || !reply) {\n  const n = (store.fails[ctx.phone] || 0) + 1;\n  store.fails[ctx.phone] = n;\n  if (n >= 2) {\n    escalate = true;\n    reason = 'two_failed_answers';\n    outcome = 'escalated';\n    store.fails[ctx.phone] = 0;\n  } else {\n    outcome = 'unsure';\n    reply = REPHRASE[lang];\n  }\n} else {\n  store.fails[ctx.phone] = 0;\n}\nif (escalate) reply = NOTICE[lang];\nreply = reply.slice(0, 900);\n\nconst hist = (store.history[ctx.phone] = store.history[ctx.phone] || []);\nhist.push({ from: 'bot', text: reply.slice(0, 300), at: new Date().toISOString() });\nwhile (hist.length > 6) hist.shift();\n\nreturn {\n  json: { ...ctx, reply, escalate, reason, outcome, lastMessages: hist.slice() },\n};\n",
+        "mode": "runOnceForEachItem"
+      },
+      "id": "7b50978b-5d94-bc9d-d6f6-db8635384c2c",
+      "name": "Process Agent Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Agent Failed (Run Once for Each Item): the AI Agent node errored (model down, quota, bad key).\n// The customer still gets an answer and a person is notified.\nconst ctx = $('Route Message').item.json;\nconst lang = ctx.language || 'und';\nconst NOTICE = {\n  en: \"I'm sorry about this. I've passed your chat to a team member, who will reply here as soon as possible. Please don't send card details in this chat.\",\n  ar: 'أعتذر عن ذلك. حوّلت محادثتك إلى أحد أعضاء الفريق وسيرد عليك هنا في أقرب وقت. من فضلك لا ترسل بيانات بطاقتك في هذه المحادثة.',\n};\nNOTICE.und = NOTICE.en + '\\n\\n' + NOTICE.ar;\nreturn {\n  json: {\n    ...ctx,\n    reply: NOTICE[lang],\n    escalate: true,\n    reason: 'agent_error',\n    outcome: 'escalated',\n    agentError: String($input.item.json.error?.message ?? 'unknown').slice(0, 200),\n  },\n};\n",
+        "mode": "runOnceForEachItem"
+      },
+      "id": "a37345fd-d771-c236-a395-34624c5728c0",
+      "name": "Agent Failed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        -20
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "afd10b0a-6727-edb4-a859-653b0d70770f",
+      "name": "Reply Ready",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "fb05285c-cbf9-2c14-ae59-590d89f8aeb5",
+              "leftValue": "={{ $json.reply }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "52bd8a85-c729-a42d-cb3b-dc323ca5c64e",
+      "name": "Has Reply?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1340,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "phoneNumberId": "REPLACE_ME_PHONE_NUMBER_ID",
+        "recipientPhoneNumber": "={{ $json.waId }}",
+        "messageType": "text",
+        "textBody": "={{ $json.reply }}",
+        "additionalFields": {}
+      },
+      "id": "d182d1a9-e5de-b3fe-7f53-803ce9ffc5e4",
+      "name": "Send WhatsApp Reply",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        1560,
+        -100
+      ],
+      "credentials": {
+        "whatsAppApi": {
+          "id": "REPLACE_ME",
+          "name": "WhatsApp Business Cloud account (placeholder)"
+        }
+      },
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_ME_SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Conversations",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "logged_at": "={{ $now.toISO() }}",
+            "message_id": "={{ $('Reply Ready').item.json.messageId }}",
+            "customer": "={{ '…' + String($('Reply Ready').item.json.phone).slice(-4) }}",
+            "language": "={{ $('Reply Ready').item.json.language }}",
+            "message_type": "={{ $('Reply Ready').item.json.type }}",
+            "topic": "={{ $('Reply Ready').item.json.topic }}",
+            "route": "={{ $('Reply Ready').item.json.route }}",
+            "outcome": "={{ $('Reply Ready').item.json.outcome }}",
+            "escalation_reason": "={{ $('Reply Ready').item.json.reason || '' }}",
+            "order_id": "={{ $('Reply Ready').item.json.orderId || '' }}",
+            "delivery": "={{ $json.error ? 'failed' : ($json.messages ? 'sent' : 'no_reply') }}"
+          },
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "beaf2270-f2ac-1fc3-e7c2-45923d143885",
+      "name": "Log Conversation",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1780,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Sheets account (placeholder)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "91cc72a9-4269-707f-6ff3-e8d40f0b9b98",
+              "leftValue": "={{ $('Reply Ready').item.json.escalate }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6b8174da-824e-2fab-1a8d-0f0be7f4da04",
+      "name": "Needs Human?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2000,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_ME_ESCALATION_WORKFLOW_ID",
+          "mode": "id",
+          "cachedResultName": "Cedar Course Co. - Escalation (demo)"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "phone": "={{ $('Reply Ready').item.json.phone }}",
+            "name": "={{ $('Reply Ready').item.json.name }}",
+            "language": "={{ $('Reply Ready').item.json.language }}",
+            "reason": "={{ $('Reply Ready').item.json.reason }}",
+            "topic": "={{ $('Reply Ready').item.json.topic }}",
+            "order_id": "={{ $('Reply Ready').item.json.orderId || '' }}",
+            "lastMessages": "={{ $('Reply Ready').item.json.lastMessages }}"
+          },
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "c5ae9196-1beb-7cfe-f65b-8df91eda2a0a",
+      "name": "Notify Team",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2220,
+        -80
+      ],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "WhatsApp Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Message": {
+      "main": [
+        [
+          {
+            "node": "Detect Language",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Language": {
+      "main": [
+        [
+          {
+            "node": "Route Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Message": {
+      "main": [
+        [
+          {
+            "node": "Needs Agent?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Agent?": {
+      "main": [
+        [
+          {
+            "node": "Customer Support Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Customer Support Agent": {
+      "main": [
+        [
+          {
+            "node": "Process Agent Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Agent Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Agent Reply": {
+      "main": [
+        [
+          {
+            "node": "Reply Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent Failed": {
+      "main": [
+        [
+          {
+            "node": "Reply Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reply Ready": {
+      "main": [
+        [
+          {
+            "node": "Has Reply?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Reply?": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WhatsApp Reply": {
+      "main": [
+        [
+          {
+            "node": "Log Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Conversation": {
+      "main": [
+        [
+          {
+            "node": "Needs Human?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Human?": {
+      "main": [
+        [
+          {
+            "node": "Notify Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Customer Support Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Customer Support Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search FAQ": {
+      "ai_tool": [
+        [
+          {
+            "node": "Customer Support Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Look Up Order": {
+      "ai_tool": [
+        [
+          {
+            "node": "Customer Support Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request Refund": {
+      "ai_tool": [
+        [
+          {
+            "node": "Customer Support Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateNote": "Demo on made-up data. Not imported into or run on a live n8n instance and not connected to a live WhatsApp number. No credential is configured: every credential is a placeholder with id REPLACE_ME."
+  }
+}
