@@ -132,6 +132,9 @@ sa.add('Request Refund', '@n8n/n8n-nodes-langchain.toolWorkflow', 2.2, {
 }, [1060, 220]);
 sa.add('Process Agent Reply', 'n8n-nodes-base.code', 2, code('process-agent-reply.js', 'runOnceForEachItem'), [900, -200]);
 sa.add('Agent Failed', 'n8n-nodes-base.code', 2, code('agent-failed.js', 'runOnceForEachItem'), [900, -20]);
+// The Agent node does not always use its error output: if it stops before it runs (bad credential, model not reachable) it passes
+// its input through with no "output" on the normal branch. So a missing or blank answer is treated as a failure here.
+sa.add('Agent Answered?', 'n8n-nodes-base.if', 2.2, ifParams(isTrue("={{ String($json.output ?? '').trim() !== '' }}")), [690, -160]);
 sa.add('Reply Ready', 'n8n-nodes-base.noOp', 1, {}, [1120, 0]);
 sa.add('Has Reply?', 'n8n-nodes-base.if', 2.2, ifParams(notEmpty('={{ $json.reply }}')), [1340, 0]);
 sa.add('Send WhatsApp Reply', 'n8n-nodes-base.whatsApp', 1.1, {
@@ -176,7 +179,9 @@ sa.link('WhatsApp Trigger', 'Normalize Message');
 sa.chain('Normalize Message', 'Detect Language', 'Route Message', 'Needs Agent?');
 sa.link('Needs Agent?', 'Customer Support Agent', { out: 0 });
 sa.link('Needs Agent?', 'Reply Ready', { out: 1 });
-sa.link('Customer Support Agent', 'Process Agent Reply', { out: 0 });
+sa.link('Customer Support Agent', 'Agent Answered?', { out: 0 });
+sa.link('Agent Answered?', 'Process Agent Reply', { out: 0 });
+sa.link('Agent Answered?', 'Agent Failed', { out: 1 });
 sa.link('Customer Support Agent', 'Agent Failed', { out: 1 });
 sa.link('Process Agent Reply', 'Reply Ready');
 sa.link('Agent Failed', 'Reply Ready');

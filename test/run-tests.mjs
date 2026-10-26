@@ -324,6 +324,40 @@ check('Agent reply', 'Agent Failed: customer still gets a notice, reason agent_e
   const r = runEach('support-agent', 'Agent Failed', { error: { message: 'Insufficient quota '.repeat(30) } }, { 'Route Message': ctxEn });
   eq([r.escalate, r.reason, r.outcome], [true, 'agent_error', 'escalated']); ok(r.reply.length > 20 && r.agentError.length <= 200, 'fields');
 });
+check('Agent reply', 'Agent Answered?: the agent feeds the check; no answer goes to Agent Failed, a real answer to Process Agent Reply', () => {
+  const c = workflows['support-agent'].connections;
+  const to = (from, out) => (c[from]?.main?.[out] || []).map((t) => t.node);
+  eq(to('Customer Support Agent', 0), ['Agent Answered?'], 'agent normal output');
+  eq(to('Customer Support Agent', 1), ['Agent Failed'], 'agent error output');
+  eq(to('Agent Answered?', 0), ['Process Agent Reply'], 'answered');
+  eq(to('Agent Answered?', 1), ['Agent Failed'], 'not answered');
+  eq(to('Agent Failed', 0), ['Reply Ready'], 'fallback joins the normal path');
+});
+const answered = (json) => {
+  const cond = nodeOf('support-agent', 'Agent Answered?').parameters.conditions.conditions[0].leftValue;
+  ok(cond.startsWith('={{') && cond.endsWith('}}'), 'expression');
+  return new Function('$json', `return (${cond.slice(3, -2).trim()});`)(json);
+};
+check('Agent reply', 'Agent Answered?: text passes; empty, blank, missing output and an error-only item do not', () => {
+  eq(answered({ output: 'You get a link by email.' }), true, 'text');
+  eq(answered({ output: '' }), false, 'empty');
+  eq(answered({ output: '  \n ' }), false, 'blank');
+  eq(answered({ ...ctxEn }), false, 'input passed through with no output (the agent node stopped before it ran)');
+  eq(answered({ error: 'Insufficient quota' }), false, 'error only');
+  eq(answered({ output: '[[UNSURE]]' }), true, 'a bare mark is an answer; Process Agent Reply handles it');
+});
+check('Agent reply', 'failed or empty agent run: honest notice, team escalation, never "please rephrase"', () => {
+  for (const [label, item] of [['error text', { error: 'Insufficient quota' }], ['error object', { error: { message: 'Rate limit' } }], ['no output', { ...ctxEn }]]) {
+    ok(!answered(item), `${label} should not count as answered`);
+    const r = runEach('support-agent', 'Agent Failed', item, { 'Route Message': ctxEn });
+    eq([r.escalate, r.reason, r.outcome], [true, 'agent_error', 'escalated'], label);
+    ok(/team member/.test(r.reply) && !/rephrase/i.test(r.reply), `${label}: reply`);
+    ok(r.agentError.length > 0 && r.agentError.length <= 200, `${label}: agentError`);
+  }
+  eq(runEach('support-agent', 'Agent Failed', { error: 'Insufficient quota' }, { 'Route Message': ctxEn }).agentError, 'Insufficient quota', 'text error kept');
+  const ar = runEach('support-agent', 'Agent Failed', { error: 'x' }, { 'Route Message': ctxAr });
+  ok(hasAr(ar.reply) && !hasLat(ar.reply), 'Arabic customer gets the Arabic notice');
+});
 check('Agent reply', 'agent prompt: has the marks, today\'s date expression, a raised maxIterations', () => {
   const a = nodeOf('support-agent', 'Customer Support Agent').parameters;
   const sm = a.options.systemMessage;

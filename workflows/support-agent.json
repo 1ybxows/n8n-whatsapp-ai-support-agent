@@ -276,7 +276,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Agent Failed (Run Once for Each Item): the AI Agent node errored (model down, quota, bad key).\n// The customer still gets an answer and a person is notified.\nconst ctx = $('Route Message').item.json;\nconst lang = ctx.language || 'und';\nconst NOTICE = {\n  en: \"I'm sorry about this. I've passed your chat to a team member, who will reply here as soon as possible. Please don't send card details in this chat.\",\n  ar: 'أعتذر عن ذلك. حوّلت محادثتك إلى أحد أعضاء الفريق وسيرد عليك هنا في أقرب وقت. من فضلك لا ترسل بيانات بطاقتك في هذه المحادثة.',\n};\nNOTICE.und = NOTICE.en + '\\n\\n' + NOTICE.ar;\nreturn {\n  json: {\n    ...ctx,\n    reply: NOTICE[lang],\n    escalate: true,\n    reason: 'agent_error',\n    outcome: 'escalated',\n    agentError: String($input.item.json.error?.message ?? 'unknown').slice(0, 200),\n  },\n};\n",
+        "jsCode": "// Agent Failed (Run Once for Each Item): the AI Agent step gave no answer: the node errored (model down, quota, bad key)\n// or came back empty. The customer still gets the honest notice and a person is notified.\nconst ctx = $('Route Message').item.json;\nconst lang = ctx.language || 'und';\nconst NOTICE = {\n  en: \"I'm sorry about this. I've passed your chat to a team member, who will reply here as soon as possible. Please don't send card details in this chat.\",\n  ar: 'أعتذر عن ذلك. حوّلت محادثتك إلى أحد أعضاء الفريق وسيرد عليك هنا في أقرب وقت. من فضلك لا ترسل بيانات بطاقتك في هذه المحادثة.',\n};\nNOTICE.und = NOTICE.en + '\\n\\n' + NOTICE.ar;\n// The error arrives as text (the agent node's own catch), as an object (the error output),\n// or not at all (the node stopped before it ran and passed its input through).\nconst err = $input.item.json.error;\nconst detail = typeof err === 'string' ? err : err?.message;\nreturn {\n  json: {\n    ...ctx,\n    reply: NOTICE[lang],\n    escalate: true,\n    reason: 'agent_error',\n    outcome: 'escalated',\n    agentError: String(detail || 'the agent gave no answer').slice(0, 200),\n  },\n};\n",
         "mode": "runOnceForEachItem"
       },
       "id": "a37345fd-d771-c236-a395-34624c5728c0",
@@ -286,6 +286,40 @@
       "position": [
         900,
         -20
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "2efe7be2-8178-f962-26bd-e79787602ce2",
+              "leftValue": "={{ String($json.output ?? '').trim() !== '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "137c917e-68a7-5670-e25a-1b652b8fe6d5",
+      "name": "Agent Answered?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        690,
+        -160
       ]
     },
     {
@@ -552,6 +586,24 @@
       ]
     },
     "Customer Support Agent": {
+      "main": [
+        [
+          {
+            "node": "Agent Answered?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Agent Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent Answered?": {
       "main": [
         [
           {

@@ -1,14 +1,14 @@
 # Test results
 
-Run: 2026-10-26T17:41:55.757Z on Node v25.9.0. Fixed test clock for the date rules: 2026-10-26T12:00:00Z.
+Run: 2026-10-26T23:46:13.498Z on Node v25.9.0. Fixed test clock for the date rules: 2026-10-26T12:00:00Z.
 Command: `node test/run-tests.mjs`
 
-**145/145 checks passed, 0 failed.** 11 Code nodes were compiled and the main ones were run on 24 made-up payloads.
+**148/148 checks passed, 0 failed.** 11 Code nodes were compiled and the main ones were run on 24 made-up payloads.
 
 - Workflow files: 52/52
 - Code nodes: 21/21
 - Samples: 30/30
-- Agent reply: 12/12
+- Agent reply: 15/15
 - FAQ tool: 6/6
 - Orders & refunds: 14/14
 - Escalation & report: 5/5
@@ -129,38 +129,41 @@ Command: `node test/run-tests.mjs`
 | 111 | Agent reply | Arabic customer gets Arabic notices (escalation and rephrase) | PASS |
 | 112 | Agent reply | long answers are cut to 900 characters; history stays at 6 | PASS |
 | 113 | Agent reply | Agent Failed: customer still gets a notice, reason agent_error, error text kept short | PASS |
-| 114 | Agent reply | agent prompt: has the marks, today's date expression, a raised maxIterations | PASS |
-| 115 | Agent reply | tools: named and described; identity and limits are plumbed, only order_id and reason come from the AI | PASS |
-| 116 | FAQ tool | kb/faq.md has 10+ entries with both languages complete | PASS |
-| 117 | FAQ tool | the FAQ inside the workflow equals kb/faq.md (no drift) | PASS |
-| 118 | FAQ tool | every FAQ question (EN and AR) finds its own entry first | PASS |
-| 119 | FAQ tool | 14 reworded questions land on the right entry | PASS |
-| 120 | FAQ tool | off-topic or empty queries return NO_MATCH (the agent then says it is not sure) | PASS |
-| 121 | FAQ tool | an Arabic question gets the Arabic answer text | PASS |
-| 122 | Orders & refunds | Validate Order ID: accepts CC-1234 style only | PASS |
-| 123 | Orders & refunds | Normalize Order: sheet row, same owner -> full details | PASS |
-| 124 | Orders & refunds | Normalize Order: payment-API shape gives the same answer | PASS |
-| 125 | Orders & refunds | Normalize Order: other number -> no details leak | PASS |
-| 126 | Orders & refunds | Normalize Order: no rows / empty item / other order id -> not found | PASS |
-| 127 | Orders & refunds | Normalize Order: phone formats compare by digits | PASS |
-| 128 | Orders & refunds | Refund Policy: each sheet order gets the expected decision | PASS |
-| 129 | Orders & refunds | Refund Policy: ok row has every Refunds column, status "pending approval", nothing else decides | PASS |
-| 130 | Orders & refunds | Refund Policy: declined cases log nothing | PASS |
-| 131 | Orders & refunds | Refund Policy: the 14-day and 150 USD edges (14.0 days ok, 14.01 closed, 150 ok, 150.01 over) | PASS |
-| 132 | Orders & refunds | Refund Policy: reason is trimmed, capped at 300, defaults to "not given" | PASS |
-| 133 | Orders & refunds | declined messages tell the agent which mark to use | PASS |
-| 134 | Orders & refunds | sample senders own the orders they mention (CC-1042 Sam, CC-1077 Layla, CC-2003 Omar) | PASS |
-| 135 | Orders & refunds | sheet column names match the nodes that write them (Refunds, Conversations) | PASS |
-| 136 | Escalation & report | Staff message: reason, customer, language, topic, order, last messages | PASS |
-| 137 | Escalation & report | Staff message: keeps Arabic text, copes with missing messages and unknown reasons, stays short | PASS |
-| 138 | Escalation & report | every escalation reason the workflows can produce has a readable label | PASS |
-| 139 | Escalation & report | Weekly report: counts for the last 7 days only (fixed fake rows, hand-counted) | PASS |
-| 140 | Escalation & report | Weekly report: text lists every number; empty sheets give zeros, not a crash | PASS |
-| 141 | Safety & docs | no keys, tokens or real-looking emails/numbers in 54 files | PASS |
-| 142 | Safety & docs | no real business or personal name anywhere (shop types, brands, private word list) | PASS |
-| 143 | Safety & docs | README: honest status line, Mermaid diagram, all workflows and sheets named | PASS |
-| 144 | Safety & docs | case-study.md: about 200 words, first person, labelled as a demo, no personal name | PASS |
-| 145 | Safety & docs | cover.png is 1600x1200 and cover.json is marked as a sample | PASS |
+| 114 | Agent reply | Agent Answered?: the agent feeds the check; no answer goes to Agent Failed, a real answer to Process Agent Reply | PASS |
+| 115 | Agent reply | Agent Answered?: text passes; empty, blank, missing output and an error-only item do not | PASS |
+| 116 | Agent reply | failed or empty agent run: honest notice, team escalation, never "please rephrase" | PASS |
+| 117 | Agent reply | agent prompt: has the marks, today's date expression, a raised maxIterations | PASS |
+| 118 | Agent reply | tools: named and described; identity and limits are plumbed, only order_id and reason come from the AI | PASS |
+| 119 | FAQ tool | kb/faq.md has 10+ entries with both languages complete | PASS |
+| 120 | FAQ tool | the FAQ inside the workflow equals kb/faq.md (no drift) | PASS |
+| 121 | FAQ tool | every FAQ question (EN and AR) finds its own entry first | PASS |
+| 122 | FAQ tool | 14 reworded questions land on the right entry | PASS |
+| 123 | FAQ tool | off-topic or empty queries return NO_MATCH (the agent then says it is not sure) | PASS |
+| 124 | FAQ tool | an Arabic question gets the Arabic answer text | PASS |
+| 125 | Orders & refunds | Validate Order ID: accepts CC-1234 style only | PASS |
+| 126 | Orders & refunds | Normalize Order: sheet row, same owner -> full details | PASS |
+| 127 | Orders & refunds | Normalize Order: payment-API shape gives the same answer | PASS |
+| 128 | Orders & refunds | Normalize Order: other number -> no details leak | PASS |
+| 129 | Orders & refunds | Normalize Order: no rows / empty item / other order id -> not found | PASS |
+| 130 | Orders & refunds | Normalize Order: phone formats compare by digits | PASS |
+| 131 | Orders & refunds | Refund Policy: each sheet order gets the expected decision | PASS |
+| 132 | Orders & refunds | Refund Policy: ok row has every Refunds column, status "pending approval", nothing else decides | PASS |
+| 133 | Orders & refunds | Refund Policy: declined cases log nothing | PASS |
+| 134 | Orders & refunds | Refund Policy: the 14-day and 150 USD edges (14.0 days ok, 14.01 closed, 150 ok, 150.01 over) | PASS |
+| 135 | Orders & refunds | Refund Policy: reason is trimmed, capped at 300, defaults to "not given" | PASS |
+| 136 | Orders & refunds | declined messages tell the agent which mark to use | PASS |
+| 137 | Orders & refunds | sample senders own the orders they mention (CC-1042 Sam, CC-1077 Layla, CC-2003 Omar) | PASS |
+| 138 | Orders & refunds | sheet column names match the nodes that write them (Refunds, Conversations) | PASS |
+| 139 | Escalation & report | Staff message: reason, customer, language, topic, order, last messages | PASS |
+| 140 | Escalation & report | Staff message: keeps Arabic text, copes with missing messages and unknown reasons, stays short | PASS |
+| 141 | Escalation & report | every escalation reason the workflows can produce has a readable label | PASS |
+| 142 | Escalation & report | Weekly report: counts for the last 7 days only (fixed fake rows, hand-counted) | PASS |
+| 143 | Escalation & report | Weekly report: text lists every number; empty sheets give zeros, not a crash | PASS |
+| 144 | Safety & docs | no keys, tokens or real-looking emails/numbers in 60 files | PASS |
+| 145 | Safety & docs | no real business or personal name anywhere (shop types, brands, private word list) | PASS |
+| 146 | Safety & docs | README: honest status line, Mermaid diagram, all workflows and sheets named | PASS |
+| 147 | Safety & docs | case-study.md: about 200 words, first person, labelled as a demo, no personal name | PASS |
+| 148 | Safety & docs | cover.png is 1600x1200 and cover.json is marked as a sample | PASS |
 
 ## What these tests do not show
 - The AI Agent node was NOT run: it needs a model key. Agent text in these tests is simulated, to test the code around it (marks, counters, escalation).

@@ -8,7 +8,7 @@
 1. A WhatsApp message arrives; code cleans it, finds the language (English or Arabic) and applies safety rules before any AI is used.
 2. Normal questions go to an AI Agent with three tools: **search_faq**, **look_up_order** (payment API, then an Orders sheet as fallback) and **request_refund**.
 3. The agent cannot approve money. A separate workflow checks the order owner, the 14-day window and a 150 USD limit, and logs a row with status `pending approval`.
-4. Angry customers, "I want a person", two failed answers, refunds over the limit and AI errors are handed to a person in Slack (or Telegram) with the last messages, and the customer is told a person will reply.
+4. Angry customers, "I want a person", two failed answers, refunds over the limit and AI errors or empty AI answers are handed to a person in Slack (or Telegram) with the last messages, and the customer is told a person will reply.
 5. A weekly report counts messages, topics, resolved, handed over, and refunds.
 
 ```mermaid
@@ -24,10 +24,12 @@ flowchart TD
   D --> T3[request_refund]
   T2 --> O[Payment API, else Orders sheet]
   T3 --> F[Policy check, then Refunds sheet]
-  D --> P[Read UNSURE / HANDOFF marks]
+  D --> Q{Answer received?}
+  Q -->|yes| P[Read UNSURE / HANDOFF marks]
   P -->|answered or rephrase| S
   P -->|2 failed answers or handoff| H
-  D -.->|AI step fails| H
+  Q -->|no answer| H
+  D -.->|error output| H
   R --> S[Send WhatsApp reply]
   H --> S
   Z --> L
@@ -97,7 +99,7 @@ Open `escalation`: disable `Post to Slack`, enable `Post to Telegram (optional)`
 ```bash
 node test/run-tests.mjs
 ```
-No installs, no network. The runner takes the JavaScript straight out of the workflow JSON and runs it on the 24 payloads, then checks FAQ search, order and refund rules, the report counts, workflow structure, node types, connections, secrets and these docs. Latest output: [results.md](results.md) (145 of 145 checks pass).
+No installs, no network. The runner takes the JavaScript straight out of the workflow JSON and runs it on the 24 payloads, then checks FAQ search, order and refund rules, the report counts, workflow structure, node types, connections, secrets and these docs. Latest output: [results.md](results.md) (148 of 148 checks pass).
 
 ### Illustrative conversations (not a live run)
 These show what the rules and tools are built to produce. The AI wording is an example, not output from a model.
@@ -110,6 +112,7 @@ These show what the rules and tools are built to produce. The AI wording is an e
 
 ## Limits (plain)
 - **The AI Agent step was never run.** It needs a model key. Everything around it is tested; the model's wording and its tool choices are not.
+- On the Mac used for testing, n8n 2.44.7 runs with `N8N_EXPRESSION_ENGINE=legacy`, because Node 25 cannot build `isolated-vm`, which n8n's default expression engine needs (n8n itself asks for Node 24). The default engine has not been tried with this demo.
 - Import-ready, not yet imported: never loaded into a real n8n and not connected to a real WhatsApp number. 6 of 22 node types were checked in the n8n source, the other 16 come from the docs.
 - If the Sheets log write fails after 3 tries, the chat still carries on and a person is still told, but that log row is lost without an alert (n8n treats the error as handled).
 - Two settings are written from the n8n docs and could not be proven offline: the expression that feeds the agent's memory key, and the inputs passed to the three sub-workflow tools. Check both in the first live test.
