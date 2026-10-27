@@ -375,6 +375,17 @@ check('Agent reply', 'tools: named and described; identity and limits are plumbe
   const mem = nodeOf('support-agent', 'Chat Memory').parameters.sessionKey;
   ok(mem.includes('sessionKey') && !mem.includes('$fromAI') && !/default/i.test(mem), 'memory key');
 });
+check('Agent reply', 'tools: the schema lists every input and matches the sub-workflow (found in the live run: an empty list made the tool plain text, so the order number never arrived)', () => {
+  for (const [t, wf] of [['Look Up Order', 'order-lookup'], ['Request Refund', 'refund-request']]) {
+    const wi = nodeOf('support-agent', t).parameters.workflowInputs;
+    const keys = Object.keys(wi.value).sort();
+    ok(wi.schema.length > 0 && JSON.stringify(wi.schema.map((s) => s.id).sort()) === JSON.stringify(keys), `${t}: schema must list exactly the inputs`);
+    ok(wi.schema.every((s) => s.displayName === s.id && s.type === 'string' && s.display === true && s.removed === false), `${t}: schema entries must have the fields the n8n editor writes`);
+    const trig = JSON.parse(rd('workflows', `${wf}.json`)).nodes.find((n) => n.type === 'n8n-nodes-base.executeWorkflowTrigger');
+    const fields = trig.parameters.workflowInputs.values.map((v) => v.name);
+    for (const k of keys) ok(fields.includes(k), `${t}: input ${k} is not a field of ${wf}'s trigger`);
+  }
+});
 
 // ---------- 5. FAQ tool ----------
 const faq = parseFaq(rd('kb', 'faq.md'));
@@ -554,7 +565,7 @@ check('Safety & docs', 'README: honest status line, Mermaid diagram, all workflo
   ok(/```mermaid\nflowchart/.test(r), 'mermaid');
   for (const n of WF) ok(r.includes(`${n}.json`), `README does not mention ${n}.json`);
   for (const s of ['Orders', 'Refunds', 'Conversations', 'REPLACE_ME', 'Telegram']) ok(r.includes(s), `README does not mention ${s}`);
-  ok(/(never|not) (been )?run/i.test(r) && /AI (Agent|step)/.test(r), 'README must say the AI step was not run');
+  ok(/AI (Agent|step)/.test(r) && /ran live/i.test(r) && r.includes('test/live-run-results.md'), 'README must say the AI step ran live (and where the results are), not that it was never run');
   ok(r.includes(`${NSRC} of ${NTYPES} node types`), 'README must say how many node types were checked in the n8n source');
 });
 check('Safety & docs', 'case-study.md: about 200 words, first person, labelled as a demo, no personal name', () => {
@@ -588,8 +599,8 @@ ${head}
 ${rowsMd.join('\n')}
 
 ## What these tests do not show
-- The AI Agent node was NOT run: it needs a model key. Agent text in these tests is simulated, to test the code around it (marks, counters, escalation).
-- No n8n instance was used. Node types and versions are checked against \`test/node-types.json\` (${NSRC} of ${NTYPES} node types checked in the n8n source on GitHub on 2026-10-26, the other ${NTYPES - NSRC} from the docs), not by importing.
+- These tests do not run the AI Agent node: the agent text in them is simulated, to test the code around it (marks, counters, escalation). One live run with a real model is in \`test/live-run-results.md\`.
+- No n8n instance was used by these tests. Node types and versions are checked against \`test/node-types.json\` (${NSRC} of ${NTYPES} node types checked in the n8n source on GitHub on 2026-10-26, the other ${NTYPES - NSRC} from the docs), not by importing.
 - Nothing was sent to WhatsApp, Slack, Telegram, Google Sheets or any API. All people, numbers and orders are invented.
 `;
 console.log(`${head}\n${rowsMd.join('\n')}\n\n${passed}/${total} checks passed, ${failed} failed.`);

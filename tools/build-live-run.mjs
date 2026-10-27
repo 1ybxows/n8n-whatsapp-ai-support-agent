@@ -162,7 +162,7 @@ const posOf = (name) => at(name).position;
     {
       parameters: {
         content:
-          '## LIVE RUN harness (test)\nRuns the demo steps on real n8n with a real OpenAI chat model, on made-up messages only.\n\n- Start: **Execute workflow** (Manual Trigger). One run = every sample once.\n- Credential: **OpenAI demo** (an OpenAI credential you create yourself).\n- Nothing is sent: the three **Capture** nodes record what would go to WhatsApp, Google Sheets and Slack/Telegram.\n- The two tools call the sandbox tool workflows (Orders table embedded).\n\nBuilt by `tools/build-live-run.mjs`. See `test/LIVE-RUN.md`.',
+          '## LIVE RUN harness (test)\nRuns the demo steps on real n8n with a real OpenAI chat model, on made-up messages only.\n\n- Start: **Execute workflow** (Manual Trigger). One run = every sample once.\n- Credential: **OpenAI demo** (an OpenAI credential you create yourself).\n- Nothing is sent: the three **Capture** nodes record what would go to WhatsApp, Google Sheets and Slack/Telegram.\n- The two tools call the sandbox tool workflows (Orders table embedded). Publish both first: n8n will not run an inactive workflow as a tool.\n- Samples go through one at a time (the loop node), so one customer\'s chat memory never leaks into another\'s.\n\nBuilt by `tools/build-live-run.mjs`. See `test/LIVE-RUN.md`.',
         width: 520,
         height: 260,
         color: 5,
@@ -252,6 +252,61 @@ const posOf = (name) => at(name).position;
   c['Capture WhatsApp Reply (not sent)'] = { main: conn([['Capture Sheet Row (not written)']]) };
   c['Capture Sheet Row (not written)'] = { main: conn([['Needs Human?']]) };
   c['Needs Human?'] = { main: conn([['Capture Team Notice (not posted)']]) };
+
+  // One sample at a time. n8n reads the chat memory session key once per run (for the first item), so a batch of customers
+  // in one agent run would all share the first customer's chat history. The live flow never batches: one WhatsApp message = one run.
+  // The loop starts after Normalize Message (the delivery receipt makes no item there, and a branch with no item would end a loop).
+  const LOOP = 'One Sample at a Time';
+  const norm = at('Normalize Message');
+  const first = c['Normalize Message'].main[0];
+  if (first.length !== 1 || first[0].node !== 'Detect Language') throw new Error('Normalize Message no longer feeds only Detect Language');
+  sa.nodes.push({ parameters: { batchSize: 1, options: {} }, id: uid(`live:${LOOP}`), name: LOOP, type: 'n8n-nodes-base.splitInBatches', typeVersion: 3, position: [norm.position[0] + 200, norm.position[1] - 220] });
+  c['Normalize Message'] = { main: conn([[LOOP]]) };
+  c[LOOP] = { main: [[], [{ node: 'Detect Language', type: 'main', index: 0 }]] }; // output 0 = done, output 1 = next sample
+  // every path that ends without a next node hands back to the loop
+  const outputCount = (n) => {
+    if (/switch|splitInBatches/i.test(n.type)) throw new Error(`${n.name}: unexpected multi-output node ${n.type}`);
+    return n.type === 'n8n-nodes-base.if' || n.onError === 'continueErrorOutput' ? 2 : 1;
+  };
+  const seen = new Set();
+  const queue = ['Detect Language'];
+  while (queue.length) {
+    const name = queue.shift();
+    if (seen.has(name)) continue;
+    seen.add(name);
+    const n = at(name);
+    const main = (c[name] ??= { main: [] }).main;
+    for (let i = 0; i < outputCount(n); i++) {
+      main[i] ??= [];
+      if (main[i].length === 0) main[i].push({ node: LOOP, type: 'main', index: 0 });
+      for (const t of main[i]) if (t.node !== LOOP) queue.push(t.node);
+    }
+  }
+  // Inside a loop, `$('Route Message').item` goes wrong after the AI Agent step once earlier steps have run more often than the agent path
+  // (n8n looks up the wrong run). In the live flow every message is its own run, so it is fine there. In this harness, ask for the latest run of Route Message instead.
+  const patched = [];
+  for (const n of sa.nodes) {
+    const code = n.parameters?.jsCode;
+    if (typeof code === 'string' && code.includes("$('Route Message').item")) {
+      n.parameters.jsCode = code.replaceAll("$('Route Message').item", "$('Route Message').last()");
+      patched.push(n.name);
+    }
+  }
+  if (!patched.includes('Process Agent Reply')) throw new Error('expected Process Agent Reply to read Route Message');
+  // the two tool nodes read the customer's phone, name and message id from Route Message in their input expressions: same lookup problem
+  for (const toolName of ['Look Up Order', 'Request Refund']) {
+    const values = at(toolName).parameters.workflowInputs.value;
+    let n = 0;
+    for (const [k, v] of Object.entries(values)) {
+      if (typeof v === 'string' && v.includes("$('Route Message').item")) {
+        values[k] = v.replaceAll("$('Route Message').item", "$('Route Message').last()");
+        n++;
+      }
+    }
+    if (!n) throw new Error(`${toolName}: expected inputs that read Route Message`);
+    patched.push(`${toolName} (inputs)`);
+  }
+  console.log(`loop-safe Route Message lookup in: ${patched.join(', ')}`);
   finish(sa, ID.main, 'Cedar Course Co. - WhatsApp Support Agent (LIVE RUN harness, nothing is sent)');
 }
 

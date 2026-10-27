@@ -32,7 +32,8 @@ const expected = JSON.parse(readFileSync(path.join(dir, 'expected.json'), 'utf8'
 const samples = readdirSync(dir).filter((f) => /^\d\d-.*\.json$/.test(f)).sort().map((f) => {
   const body = JSON.parse(readFileSync(path.join(dir, f), 'utf8'));
   const msg = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-  return { file: f, id: f.replace(/\.json$/, ''), messageId: msg?.id ?? '', exp: expected[f] ?? {} };
+  const receipt = !msg && Boolean(body.entry?.[0]?.changes?.[0]?.value?.statuses);
+  return { file: f, id: f.replace(/\.json$/, ''), messageId: msg?.id ?? '', receipt, exp: expected[f] ?? {} };
 });
 
 // token usage: sum whatever the chat-model sub-node recorded
@@ -45,17 +46,35 @@ const walk = (v) => {
 };
 walk((runData['OpenAI Chat Model'] ?? runData['Anthropic Chat Model'] ?? []).map((r) => r.data));
 
+// tool calls: how many, and how many answered "not found"
+const toolStats = (node) => {
+  const runs = runData[node] ?? [];
+  const bad = runs.filter((r) => r.error || /"found":false|not_found/.test(JSON.stringify(r.data?.ai_tool ?? ''))).length;
+  return { calls: runs.length, bad };
+};
+const faq = toolStats('Search FAQ');
+const orderTool = toolStats('Look Up Order');
+const refundTool = toolStats('Request Refund');
+const toolsBroken = orderTool.calls + refundTool.calls > 0 && orderTool.bad === orderTool.calls && refundTool.bad === refundTool.calls;
+
 const cell = (s) => String(s ?? '').replace(/\|/g, '\\|').replace(/\s+/g, ' ').trim();
 const quote = (s) => String(s ?? '').trim().split('\n').map((l) => `> ${l}`).join('\n');
 const yn = (b) => (b ? 'yes' : 'no');
 
-const byId = new Map(rows.map((r) => [r.messageId, r]));
+// a duplicate sample repeats the first one's WhatsApp message id: hand the rows out in sample order
+const byId = new Map();
+for (const r of rows) byId.set(r.messageId, [...(byId.get(r.messageId) ?? []), r]);
 const table = [];
 const sections = [];
 let agentReplies = 0, routeOk = 0, langOk = 0, missing = 0;
 for (const s of samples) {
-  const r = byId.get(s.messageId);
-  if (!r) { missing++; table.push(`| ${s.id} | not in run | | | | | |`); sections.push(`### ${s.id}\nNo result for this sample in the run (it may have been dropped as a duplicate or a status update).\n`); continue; }
+  const r = byId.get(s.messageId)?.shift();
+  if (!r) {
+    missing++;
+    table.push(`| ${s.id} | ${s.receipt ? 'dropped on purpose (delivery receipt)' : 'not in run'} | | | | | |`);
+    sections.push(`### ${s.id}\n${s.receipt ? 'This is a WhatsApp delivery receipt (a status update), not a customer message. The flow drops it before the AI step, so it has no result. That is expected.' : 'No result for this sample in the run.'}\n`);
+    continue;
+  }
   const row = r.row ?? {};
   const rOk = s.exp.route === undefined ? null : s.exp.route === row.route;
   const lOk = s.exp.language === undefined ? null : s.exp.language === row.language;
@@ -71,18 +90,21 @@ for (const s of samples) {
   ].join('\n'));
 }
 
-const when = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', dateStyle: 'long', timeStyle: 'short' }).format(new Date());
+const when = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', dateStyle: 'long', timeStyle: 'short' }).format(new Date(runData['Load Samples']?.[0]?.startTime ?? Date.now()));
 const out = `# Live run results
 
-Run on **${when} (UTC)** on a Mac: n8n ${flag('n8n', '2.44.7')} running locally, chat model \`${flag('model', runData['Anthropic Chat Model'] ? 'claude-haiku-5-5' : 'gpt-4o-mini')}\`, harness \`test/live-run.json\`.
+Run on **${when} (UTC)** on a Mac: n8n ${flag('n8n', '2.44.7')} running locally, chat model \`${flag('model', runData['Anthropic Chat Model'] ? 'claude-haiku-5-5' : 'gpt-4o-mini')}\`, harness \`${runData['Anthropic Chat Model'] ? 'test/live-run-anthropic.json' : 'test/live-run.json'}\`.
 Everything below is the made-up sample data. **Nothing was sent anywhere:** the WhatsApp reply, the Google Sheets writes and the team notice were captured by Capture nodes (captured sends: ${sends.length}, captured team notices: ${notices.length}).
 
-- Samples in the run: ${samples.length}. Results found: ${samples.length - missing}.
-- Reached the AI step: ${agentReplies}. AI step errors: ${agentErrors}.
+Samples went through one at a time, so each customer had their own chat memory.
+
+- Samples in the run: ${samples.length}. Results found: ${samples.length - missing}${missing ? ` (${samples.filter((s) => s.receipt).length ? 'the missing one is a delivery receipt, which the flow drops before the AI step on purpose' : 'some samples have no result'})` : ''}.
+- Reached the AI step: ${agentReplies}. The other ${samples.length - agentReplies} were handled by the fixed steps before the AI step. AI step errors: ${agentErrors}.
+- Tool calls: FAQ search ${faq.calls} (${faq.bad} failed), order lookup ${orderTool.calls} (${orderTool.bad} said "not found" or failed), refund request ${refundTool.calls} (${refundTool.bad} said "not found" or failed).
 - Route matched \`samples/expected.json\`: ${routeOk} of ${samples.length - missing}. Language matched: ${langOk} of ${samples.length - missing}.
 - Tokens used by the chat model: ${tokenRuns ? `${tokens} (${tokenRuns} model calls)` : 'not shown in the run data'}.
 
-The replies are what the model wrote on this run. A different run can word them differently.
+${toolsBroken ? `**Read this first.** Every order lookup and refund call in this run came back "not found", although the orders are in the sample sheet. The order number did not reach the sandbox tool workflow. So the order and refund paths are **not proven** by this run: the replies for those samples show how the AI behaves when a tool says "not found", not a working lookup or refund. The cause is not found yet. One suspect is the \`legacy\` expression engine this Mac needs.\n\n` : ''}The replies are what the model wrote on this run. A different run can word them differently.
 
 ## Summary
 

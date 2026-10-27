@@ -1,14 +1,14 @@
 # Test results
 
-Run: 2026-10-26T23:51:52.274Z on Node v25.9.0. Fixed test clock for the date rules: 2026-10-26T12:00:00Z.
+Run: 2026-10-27T12:48:02.299Z on Node v25.9.0. Fixed test clock for the date rules: 2026-10-26T12:00:00Z.
 Command: `node test/run-tests.mjs`
 
-**148/148 checks passed, 0 failed.** 11 Code nodes were compiled and the main ones were run on 24 made-up payloads.
+**149/149 checks passed, 0 failed.** 11 Code nodes were compiled and the main ones were run on 24 made-up payloads.
 
 - Workflow files: 52/52
 - Code nodes: 21/21
 - Samples: 30/30
-- Agent reply: 15/15
+- Agent reply: 16/16
 - FAQ tool: 6/6
 - Orders & refunds: 14/14
 - Escalation & report: 5/5
@@ -134,38 +134,39 @@ Command: `node test/run-tests.mjs`
 | 116 | Agent reply | failed or empty agent run: honest notice, team escalation, never "please rephrase" | PASS |
 | 117 | Agent reply | agent prompt: has the marks, today's date expression, a raised maxIterations | PASS |
 | 118 | Agent reply | tools: named and described; identity and limits are plumbed, only order_id and reason come from the AI | PASS |
-| 119 | FAQ tool | kb/faq.md has 10+ entries with both languages complete | PASS |
-| 120 | FAQ tool | the FAQ inside the workflow equals kb/faq.md (no drift) | PASS |
-| 121 | FAQ tool | every FAQ question (EN and AR) finds its own entry first | PASS |
-| 122 | FAQ tool | 14 reworded questions land on the right entry | PASS |
-| 123 | FAQ tool | off-topic or empty queries return NO_MATCH (the agent then says it is not sure) | PASS |
-| 124 | FAQ tool | an Arabic question gets the Arabic answer text | PASS |
-| 125 | Orders & refunds | Validate Order ID: accepts CC-1234 style only | PASS |
-| 126 | Orders & refunds | Normalize Order: sheet row, same owner -> full details | PASS |
-| 127 | Orders & refunds | Normalize Order: payment-API shape gives the same answer | PASS |
-| 128 | Orders & refunds | Normalize Order: other number -> no details leak | PASS |
-| 129 | Orders & refunds | Normalize Order: no rows / empty item / other order id -> not found | PASS |
-| 130 | Orders & refunds | Normalize Order: phone formats compare by digits | PASS |
-| 131 | Orders & refunds | Refund Policy: each sheet order gets the expected decision | PASS |
-| 132 | Orders & refunds | Refund Policy: ok row has every Refunds column, status "pending approval", nothing else decides | PASS |
-| 133 | Orders & refunds | Refund Policy: declined cases log nothing | PASS |
-| 134 | Orders & refunds | Refund Policy: the 14-day and 150 USD edges (14.0 days ok, 14.01 closed, 150 ok, 150.01 over) | PASS |
-| 135 | Orders & refunds | Refund Policy: reason is trimmed, capped at 300, defaults to "not given" | PASS |
-| 136 | Orders & refunds | declined messages tell the agent which mark to use | PASS |
-| 137 | Orders & refunds | sample senders own the orders they mention (CC-1042 Sam, CC-1077 Layla, CC-2003 Omar) | PASS |
-| 138 | Orders & refunds | sheet column names match the nodes that write them (Refunds, Conversations) | PASS |
-| 139 | Escalation & report | Staff message: reason, customer, language, topic, order, last messages | PASS |
-| 140 | Escalation & report | Staff message: keeps Arabic text, copes with missing messages and unknown reasons, stays short | PASS |
-| 141 | Escalation & report | every escalation reason the workflows can produce has a readable label | PASS |
-| 142 | Escalation & report | Weekly report: counts for the last 7 days only (fixed fake rows, hand-counted) | PASS |
-| 143 | Escalation & report | Weekly report: text lists every number; empty sheets give zeros, not a crash | PASS |
-| 144 | Safety & docs | no keys, tokens or real-looking emails/numbers in 61 files | PASS |
-| 145 | Safety & docs | no real business or personal name anywhere (shop types, brands, private word list) | PASS |
-| 146 | Safety & docs | README: honest status line, Mermaid diagram, all workflows and sheets named | PASS |
-| 147 | Safety & docs | case-study.md: about 200 words, first person, labelled as a demo, no personal name | PASS |
-| 148 | Safety & docs | cover.png is 1600x1200 and cover.json is marked as a sample | PASS |
+| 119 | Agent reply | tools: the schema lists every input and matches the sub-workflow (found in the live run: an empty list made the tool plain text, so the order number never arrived) | PASS |
+| 120 | FAQ tool | kb/faq.md has 10+ entries with both languages complete | PASS |
+| 121 | FAQ tool | the FAQ inside the workflow equals kb/faq.md (no drift) | PASS |
+| 122 | FAQ tool | every FAQ question (EN and AR) finds its own entry first | PASS |
+| 123 | FAQ tool | 14 reworded questions land on the right entry | PASS |
+| 124 | FAQ tool | off-topic or empty queries return NO_MATCH (the agent then says it is not sure) | PASS |
+| 125 | FAQ tool | an Arabic question gets the Arabic answer text | PASS |
+| 126 | Orders & refunds | Validate Order ID: accepts CC-1234 style only | PASS |
+| 127 | Orders & refunds | Normalize Order: sheet row, same owner -> full details | PASS |
+| 128 | Orders & refunds | Normalize Order: payment-API shape gives the same answer | PASS |
+| 129 | Orders & refunds | Normalize Order: other number -> no details leak | PASS |
+| 130 | Orders & refunds | Normalize Order: no rows / empty item / other order id -> not found | PASS |
+| 131 | Orders & refunds | Normalize Order: phone formats compare by digits | PASS |
+| 132 | Orders & refunds | Refund Policy: each sheet order gets the expected decision | PASS |
+| 133 | Orders & refunds | Refund Policy: ok row has every Refunds column, status "pending approval", nothing else decides | PASS |
+| 134 | Orders & refunds | Refund Policy: declined cases log nothing | PASS |
+| 135 | Orders & refunds | Refund Policy: the 14-day and 150 USD edges (14.0 days ok, 14.01 closed, 150 ok, 150.01 over) | PASS |
+| 136 | Orders & refunds | Refund Policy: reason is trimmed, capped at 300, defaults to "not given" | PASS |
+| 137 | Orders & refunds | declined messages tell the agent which mark to use | PASS |
+| 138 | Orders & refunds | sample senders own the orders they mention (CC-1042 Sam, CC-1077 Layla, CC-2003 Omar) | PASS |
+| 139 | Orders & refunds | sheet column names match the nodes that write them (Refunds, Conversations) | PASS |
+| 140 | Escalation & report | Staff message: reason, customer, language, topic, order, last messages | PASS |
+| 141 | Escalation & report | Staff message: keeps Arabic text, copes with missing messages and unknown reasons, stays short | PASS |
+| 142 | Escalation & report | every escalation reason the workflows can produce has a readable label | PASS |
+| 143 | Escalation & report | Weekly report: counts for the last 7 days only (fixed fake rows, hand-counted) | PASS |
+| 144 | Escalation & report | Weekly report: text lists every number; empty sheets give zeros, not a crash | PASS |
+| 145 | Safety & docs | no keys, tokens or real-looking emails/numbers in 62 files | PASS |
+| 146 | Safety & docs | no real business or personal name anywhere (shop types, brands, private word list) | PASS |
+| 147 | Safety & docs | README: honest status line, Mermaid diagram, all workflows and sheets named | PASS |
+| 148 | Safety & docs | case-study.md: about 200 words, first person, labelled as a demo, no personal name | PASS |
+| 149 | Safety & docs | cover.png is 1600x1200 and cover.json is marked as a sample | PASS |
 
 ## What these tests do not show
-- The AI Agent node was NOT run: it needs a model key. Agent text in these tests is simulated, to test the code around it (marks, counters, escalation).
-- No n8n instance was used. Node types and versions are checked against `test/node-types.json` (6 of 22 node types checked in the n8n source on GitHub on 2026-10-26, the other 16 from the docs), not by importing.
+- These tests do not run the AI Agent node: the agent text in them is simulated, to test the code around it (marks, counters, escalation). One live run with a real model is in `test/live-run-results.md`.
+- No n8n instance was used by these tests. Node types and versions are checked against `test/node-types.json` (6 of 22 node types checked in the n8n source on GitHub on 2026-10-26, the other 16 from the docs), not by importing.
 - Nothing was sent to WhatsApp, Slack, Telegram, Google Sheets or any API. All people, numbers and orders are invented.

@@ -2,6 +2,8 @@
 
 **Demo on made-up data. Not yet run against a live WhatsApp number.**
 
+**Live test, 27 Oct 2026:** the AI step ran live on n8n 2.44.7 on a Mac, with `claude-haiku-5-5`, on 8 of the 24 made-up messages (the other 16 are handled before the AI step). It ran in a test harness that sends nothing. No real Google Sheets or Slack was used. The first run found a bug in how the order and refund tools were wired for the AI; it is fixed and the run was repeated (see Limits). Results: [test/live-run-results.md](test/live-run-results.md).
+
 "Cedar Course Co." is an invented online store that sells one digital course with a one-time payment. Customers write in English and Arabic. This demo shows how I would build the support line for a shop like that.
 
 ## What it does
@@ -99,7 +101,7 @@ Open `escalation`: disable `Post to Slack`, enable `Post to Telegram (optional)`
 ```bash
 node test/run-tests.mjs
 ```
-No installs, no network. The runner takes the JavaScript straight out of the workflow JSON and runs it on the 24 payloads, then checks FAQ search, order and refund rules, the report counts, workflow structure, node types, connections, secrets and these docs. Latest output: [results.md](results.md) (148 of 148 checks pass).
+No installs, no network. The runner takes the JavaScript straight out of the workflow JSON and runs it on the 24 payloads, then checks FAQ search, order and refund rules, the report counts, workflow structure, node types, connections, secrets and these docs. Latest output: [results.md](results.md) (149 of 149 checks pass).
 
 ### Illustrative conversations (not a live run)
 These show what the rules and tools are built to produce. The AI wording is an example, not output from a model.
@@ -111,11 +113,13 @@ These show what the rules and tools are built to produce. The AI wording is an e
 > **Flow (illustrative):** the order is 349 USD, above the 150 USD limit, so nothing is logged. The agent ends with `[[HANDOFF:refund_over_limit]]`, the customer gets the Arabic handoff notice, and Slack gets the last messages.
 
 ## Limits (plain)
-- **The AI Agent step was never run.** It needs a model key. Everything around it is tested; the model's wording and its tool choices are not.
+- **The AI Agent step ran live once, in a test harness.** On 27 Oct 2026, 24 made-up messages went through a copy of this flow on n8n 2.44.7 (Node 25) with `claude-haiku-5-5`: 8 reached the AI step with no AI errors, the other 16 were handled before it. WhatsApp, Sheets and Slack were replaced by capture nodes, so nothing was sent (see `test/LIVE-RUN.md`). One run is a spot check, not a quality guarantee: the wording changes from run to run.
+- **A live run found a tool bug, now fixed.** The order and refund tools had an empty input list in the workflow JSON, so n8n treated them as plain text and the order number never reached the tool workflow: every call said "not found" (the AI handled that safely and invented nothing). The input list is now filled in and a test guards it. In the repeat run the order replies show the real order from the sample sheet, one refund was logged as pending approval and the 349 USD one was handed to a person. That is 2 order lookups and 2 refund calls: a spot check. The offline checks alone could not see this bug.
+- n8n reads the chat memory key once per run. That is safe here because every WhatsApp message starts its own run, but several customers must never be put into one agent run (the test harness hit this and now feeds one sample at a time).
 - On the Mac used for testing, n8n 2.44.7 runs with `N8N_EXPRESSION_ENGINE=legacy`, because Node 25 cannot build `isolated-vm`, which n8n's default expression engine needs (n8n itself asks for Node 24). The default engine has not been tried with this demo.
-- Import-ready, not yet imported: never loaded into a real n8n and not connected to a real WhatsApp number. 6 of 22 node types were checked in the n8n source, the other 16 come from the docs.
+- Import-ready: all six workflows imported into n8n 2.44.7 with its command line (inactive). Not connected to a real WhatsApp number. 6 of 22 node types were checked in the n8n source, the other 16 come from the docs.
 - If the Sheets log write fails after 3 tries, the chat still carries on and a person is still told, but that log row is lost without an alert (n8n treats the error as handled).
-- Two settings are written from the n8n docs and could not be proven offline: the expression that feeds the agent's memory key, and the inputs passed to the three sub-workflow tools. Check both in the first live test.
+- Two settings were written from the n8n docs and could not be proven offline. In the live run the memory key worked (each customer had their own history) and, after the fix above, the inputs reach the order and refund sub-workflow tools. The FAQ search tool worked from the start.
 - WhatsApp only allows free-text replies within 24 hours of the customer's last message; later replies need an approved template, which this demo does not include.
 - Language detection counts Arabic and Latin letters. Arabic typed in Latin letters is not understood; the message goes to the agent as English.
 - Anger and "person" rules are word lists. They will miss some messages and flag a few calm ones.

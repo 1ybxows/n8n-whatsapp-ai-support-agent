@@ -57,9 +57,18 @@ const assign = (name, value, type = 'string') => ({ id: uid(`assign:${name}`), n
 const setParams = (...assignments) => ({ assignments: { assignments }, includeOtherFields: false, options: {} });
 const sheet = (tab) => ({ documentId: { __rl: true, value: 'REPLACE_ME_SPREADSHEET_ID', mode: 'id' }, sheetName: { __rl: true, value: tab, mode: 'name' } });
 const columns = (value) => ({ mappingMode: 'defineBelow', value, matchingColumns: [], schema: [], attemptToConvertTypes: false, convertFieldsToString: false });
-const subWorkflow = (placeholder, label, inputs) => ({
+const subWorkflow = (placeholder, label, inputs, asTool = false) => ({
   workflowId: { __rl: true, value: placeholder, mode: 'id', cachedResultName: label },
-  workflowInputs: { mappingMode: 'defineBelow', value: inputs, matchingColumns: [], schema: [], attemptToConvertTypes: false, convertFieldsToString: false },
+  // `schema` must list every input: with an empty list n8n 2.x treats the tool as plain text (one "input" string), the model never fills
+  // the $fromAI fields and the sub-workflow gets no order_id. The n8n editor fills this list when you pick the workflow; a hand-built JSON must too.
+  workflowInputs: {
+    mappingMode: 'defineBelow',
+    value: inputs,
+    matchingColumns: [],
+    schema: (!asTool ? [] : Object.keys(inputs)).map((id) => ({ id, displayName: id, required: false, defaultMatch: false, display: true, canBeUsedToMatch: true, type: 'string', removed: false })),
+    attemptToConvertTypes: false,
+    convertFieldsToString: false,
+  },
   options: {},
 });
 const trigger = (...fields) => ({ inputSource: 'workflowInputs', workflowInputs: { values: fields.map(([name, type = 'string']) => ({ name, type })) } });
@@ -115,7 +124,7 @@ sa.add('Look Up Order', '@n8n/n8n-nodes-langchain.toolWorkflow', 2.2, {
   ...subWorkflow('REPLACE_ME_ORDER_LOOKUP_WORKFLOW_ID', 'Cedar Course Co. - Order Lookup (tool, demo)', {
     order_id: "={{ $fromAI('order_id', 'The order number the customer wrote, format CC-1234', 'string') }}",
     customer_phone: "={{ $('Route Message').item.json.phone }}",
-  }),
+  }, true),
 }, [880, 220]);
 sa.add('Request Refund', '@n8n/n8n-nodes-langchain.toolWorkflow', 2.2, {
   name: 'request_refund',
@@ -128,7 +137,7 @@ sa.add('Request Refund', '@n8n/n8n-nodes-langchain.toolWorkflow', 2.2, {
     customer_name: "={{ $('Route Message').item.json.name }}",
     message_id: "={{ $('Route Message').item.json.messageId }}",
     language: "={{ $('Route Message').item.json.language }}",
-  }),
+  }, true),
 }, [1060, 220]);
 sa.add('Process Agent Reply', 'n8n-nodes-base.code', 2, code('process-agent-reply.js', 'runOnceForEachItem'), [900, -200]);
 sa.add('Agent Failed', 'n8n-nodes-base.code', 2, code('agent-failed.js', 'runOnceForEachItem'), [900, -20]);

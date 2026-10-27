@@ -167,10 +167,31 @@
           "mappingMode": "defineBelow",
           "value": {
             "order_id": "={{ $fromAI('order_id', 'The order number the customer wrote, format CC-1234', 'string') }}",
-            "customer_phone": "={{ $('Route Message').item.json.phone }}"
+            "customer_phone": "={{ $('Route Message').last().json.phone }}"
           },
           "matchingColumns": [],
-          "schema": [],
+          "schema": [
+            {
+              "id": "order_id",
+              "displayName": "order_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "customer_phone",
+              "displayName": "customer_phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         },
@@ -201,13 +222,74 @@
           "value": {
             "order_id": "={{ $fromAI('order_id', 'The order number the customer wrote, format CC-1234', 'string') }}",
             "reason": "={{ $fromAI('reason', 'Why the customer wants a refund, one short sentence in English', 'string') }}",
-            "customer_phone": "={{ $('Route Message').item.json.phone }}",
-            "customer_name": "={{ $('Route Message').item.json.name }}",
-            "message_id": "={{ $('Route Message').item.json.messageId }}",
-            "language": "={{ $('Route Message').item.json.language }}"
+            "customer_phone": "={{ $('Route Message').last().json.phone }}",
+            "customer_name": "={{ $('Route Message').last().json.name }}",
+            "message_id": "={{ $('Route Message').last().json.messageId }}",
+            "language": "={{ $('Route Message').last().json.language }}"
           },
           "matchingColumns": [],
-          "schema": [],
+          "schema": [
+            {
+              "id": "order_id",
+              "displayName": "order_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "reason",
+              "displayName": "reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "customer_phone",
+              "displayName": "customer_phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "customer_name",
+              "displayName": "customer_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "message_id",
+              "displayName": "message_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "language",
+              "displayName": "language",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
           "attemptToConvertTypes": false,
           "convertFieldsToString": false
         },
@@ -224,7 +306,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Process Agent Reply (Run Once for Each Item): reads the markers the agent was told to use,\n//   [[UNSURE]]            it could not answer from the FAQ, order data or policies\n//   [[HANDOFF:reason]]    a person must take over\n// strips them, counts failed answers, and decides whether to escalate.\nconst ctx = $('Route Message').item.json;\nconst store = $getWorkflowStaticData('global');\nstore.fails = store.fails || {};\nstore.history = store.history || {};\nconst lang = ctx.language || 'und';\n\nconst NOTICE = {\n  en: \"I'm sorry about this. I've passed your chat to a team member, who will reply here as soon as possible. Please don't send card details in this chat.\",\n  ar: 'أعتذر عن ذلك. حوّلت محادثتك إلى أحد أعضاء الفريق وسيرد عليك هنا في أقرب وقت. من فضلك لا ترسل بيانات بطاقتك في هذه المحادثة.',\n};\nNOTICE.und = NOTICE.en + '\\n\\n' + NOTICE.ar;\nconst REPHRASE = {\n  en: 'I am not sure about that one, and I do not want to guess. Could you rephrase it, or type \"human\" to reach a team member?',\n  ar: 'لست متأكدًا من ذلك ولا أريد التخمين. هل يمكنك إعادة صياغة سؤالك، أو كتابة \"موظف\" للتحدث مع أحد أعضاء الفريق؟',\n};\nREPHRASE.und = REPHRASE.en + '\\n\\n' + REPHRASE.ar;\n\nconst raw = String($input.item.json.output ?? '').trim();\nconst handoff = raw.match(/\\[\\[HANDOFF(?::([a-z_]+))?\\]\\]/i);\nconst unsure = /\\[\\[UNSURE\\]\\]/i.test(raw);\nlet reply = raw.replace(/\\[\\[(?:HANDOFF(?::[a-z_]+)?|UNSURE)\\]\\]/gi, '').trim();\n\nlet escalate = false;\nlet reason = null;\nlet outcome = 'resolved';\nif (handoff) {\n  escalate = true;\n  reason = handoff[1] ? handoff[1].toLowerCase() : 'agent_handoff';\n  outcome = 'escalated';\n  store.fails[ctx.phone] = 0;\n} else if (unsure || !reply) {\n  const n = (store.fails[ctx.phone] || 0) + 1;\n  store.fails[ctx.phone] = n;\n  if (n >= 2) {\n    escalate = true;\n    reason = 'two_failed_answers';\n    outcome = 'escalated';\n    store.fails[ctx.phone] = 0;\n  } else {\n    outcome = 'unsure';\n    reply = REPHRASE[lang];\n  }\n} else {\n  store.fails[ctx.phone] = 0;\n}\nif (escalate) reply = NOTICE[lang];\nreply = reply.slice(0, 900);\n\nconst hist = (store.history[ctx.phone] = store.history[ctx.phone] || []);\nhist.push({ from: 'bot', text: reply.slice(0, 300), at: new Date().toISOString() });\nwhile (hist.length > 6) hist.shift();\n\nreturn {\n  json: { ...ctx, reply, escalate, reason, outcome, lastMessages: hist.slice() },\n};\n",
+        "jsCode": "// Process Agent Reply (Run Once for Each Item): reads the markers the agent was told to use,\n//   [[UNSURE]]            it could not answer from the FAQ, order data or policies\n//   [[HANDOFF:reason]]    a person must take over\n// strips them, counts failed answers, and decides whether to escalate.\nconst ctx = $('Route Message').last().json;\nconst store = $getWorkflowStaticData('global');\nstore.fails = store.fails || {};\nstore.history = store.history || {};\nconst lang = ctx.language || 'und';\n\nconst NOTICE = {\n  en: \"I'm sorry about this. I've passed your chat to a team member, who will reply here as soon as possible. Please don't send card details in this chat.\",\n  ar: 'أعتذر عن ذلك. حوّلت محادثتك إلى أحد أعضاء الفريق وسيرد عليك هنا في أقرب وقت. من فضلك لا ترسل بيانات بطاقتك في هذه المحادثة.',\n};\nNOTICE.und = NOTICE.en + '\\n\\n' + NOTICE.ar;\nconst REPHRASE = {\n  en: 'I am not sure about that one, and I do not want to guess. Could you rephrase it, or type \"human\" to reach a team member?',\n  ar: 'لست متأكدًا من ذلك ولا أريد التخمين. هل يمكنك إعادة صياغة سؤالك، أو كتابة \"موظف\" للتحدث مع أحد أعضاء الفريق؟',\n};\nREPHRASE.und = REPHRASE.en + '\\n\\n' + REPHRASE.ar;\n\nconst raw = String($input.item.json.output ?? '').trim();\nconst handoff = raw.match(/\\[\\[HANDOFF(?::([a-z_]+))?\\]\\]/i);\nconst unsure = /\\[\\[UNSURE\\]\\]/i.test(raw);\nlet reply = raw.replace(/\\[\\[(?:HANDOFF(?::[a-z_]+)?|UNSURE)\\]\\]/gi, '').trim();\n\nlet escalate = false;\nlet reason = null;\nlet outcome = 'resolved';\nif (handoff) {\n  escalate = true;\n  reason = handoff[1] ? handoff[1].toLowerCase() : 'agent_handoff';\n  outcome = 'escalated';\n  store.fails[ctx.phone] = 0;\n} else if (unsure || !reply) {\n  const n = (store.fails[ctx.phone] || 0) + 1;\n  store.fails[ctx.phone] = n;\n  if (n >= 2) {\n    escalate = true;\n    reason = 'two_failed_answers';\n    outcome = 'escalated';\n    store.fails[ctx.phone] = 0;\n  } else {\n    outcome = 'unsure';\n    reply = REPHRASE[lang];\n  }\n} else {\n  store.fails[ctx.phone] = 0;\n}\nif (escalate) reply = NOTICE[lang];\nreply = reply.slice(0, 900);\n\nconst hist = (store.history[ctx.phone] = store.history[ctx.phone] || []);\nhist.push({ from: 'bot', text: reply.slice(0, 300), at: new Date().toISOString() });\nwhile (hist.length > 6) hist.shift();\n\nreturn {\n  json: { ...ctx, reply, escalate, reason, outcome, lastMessages: hist.slice() },\n};\n",
         "mode": "runOnceForEachItem"
       },
       "id": "7b50978b-5d94-bc9d-d6f6-db8635384c2c",
@@ -238,7 +320,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Agent Failed (Run Once for Each Item): the AI Agent step gave no answer: the node errored (model down, quota, bad key)\n// or came back empty. The customer still gets the honest notice and a person is notified.\nconst ctx = $('Route Message').item.json;\nconst lang = ctx.language || 'und';\nconst NOTICE = {\n  en: \"I'm sorry about this. I've passed your chat to a team member, who will reply here as soon as possible. Please don't send card details in this chat.\",\n  ar: 'أعتذر عن ذلك. حوّلت محادثتك إلى أحد أعضاء الفريق وسيرد عليك هنا في أقرب وقت. من فضلك لا ترسل بيانات بطاقتك في هذه المحادثة.',\n};\nNOTICE.und = NOTICE.en + '\\n\\n' + NOTICE.ar;\n// The error arrives as text (the agent node's own catch), as an object (the error output),\n// or not at all (the node stopped before it ran and passed its input through).\nconst err = $input.item.json.error;\nconst detail = typeof err === 'string' ? err : err?.message;\nreturn {\n  json: {\n    ...ctx,\n    reply: NOTICE[lang],\n    escalate: true,\n    reason: 'agent_error',\n    outcome: 'escalated',\n    agentError: String(detail || 'the agent gave no answer').slice(0, 200),\n  },\n};\n",
+        "jsCode": "// Agent Failed (Run Once for Each Item): the AI Agent step gave no answer: the node errored (model down, quota, bad key)\n// or came back empty. The customer still gets the honest notice and a person is notified.\nconst ctx = $('Route Message').last().json;\nconst lang = ctx.language || 'und';\nconst NOTICE = {\n  en: \"I'm sorry about this. I've passed your chat to a team member, who will reply here as soon as possible. Please don't send card details in this chat.\",\n  ar: 'أعتذر عن ذلك. حوّلت محادثتك إلى أحد أعضاء الفريق وسيرد عليك هنا في أقرب وقت. من فضلك لا ترسل بيانات بطاقتك في هذه المحادثة.',\n};\nNOTICE.und = NOTICE.en + '\\n\\n' + NOTICE.ar;\n// The error arrives as text (the agent node's own catch), as an object (the error output),\n// or not at all (the node stopped before it ran and passed its input through).\nconst err = $input.item.json.error;\nconst detail = typeof err === 'string' ? err : err?.message;\nreturn {\n  json: {\n    ...ctx,\n    reply: NOTICE[lang],\n    escalate: true,\n    reason: 'agent_error',\n    outcome: 'escalated',\n    agentError: String(detail || 'the agent gave no answer').slice(0, 200),\n  },\n};\n",
         "mode": "runOnceForEachItem"
       },
       "id": "a37345fd-d771-c236-a395-34624c5728c0",
@@ -365,7 +447,7 @@
     },
     {
       "parameters": {
-        "content": "## LIVE RUN harness (test)\nRuns the demo steps on real n8n with a real Anthropic chat model (claude-haiku-5-5), on made-up messages only.\n\n- Start: **Execute workflow** (Manual Trigger). One run = every sample once.\n- Credential: **Anthropic demo** (an Anthropic credential you create yourself).\n- Nothing is sent: the three **Capture** nodes record what would go to WhatsApp, Google Sheets and Slack/Telegram.\n- The two tools call the sandbox tool workflows (Orders table embedded).\n\nBuilt by `tools/build-live-run.mjs`. See `test/LIVE-RUN.md`.",
+        "content": "## LIVE RUN harness (test)\nRuns the demo steps on real n8n with a real Anthropic chat model (claude-haiku-5-5), on made-up messages only.\n\n- Start: **Execute workflow** (Manual Trigger). One run = every sample once.\n- Credential: **Anthropic demo** (an Anthropic credential you create yourself).\n- Nothing is sent: the three **Capture** nodes record what would go to WhatsApp, Google Sheets and Slack/Telegram.\n- The two tools call the sandbox tool workflows (Orders table embedded). Publish both first: n8n will not run an inactive workflow as a tool.\n- Samples go through one at a time (the loop node), so one customer's chat memory never leaks into another's.\n\nBuilt by `tools/build-live-run.mjs`. See `test/LIVE-RUN.md`.",
         "width": 520,
         "height": 260,
         "color": 5
@@ -444,6 +526,20 @@
         2220,
         -80
       ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "10f091a3-df66-cdf1-2f2f-30f94f5a948d",
+      "name": "One Sample at a Time",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -220,
+        -220
+      ]
     }
   ],
   "pinData": {},
@@ -452,7 +548,7 @@
       "main": [
         [
           {
-            "node": "Detect Language",
+            "node": "One Sample at a Time",
             "type": "main",
             "index": 0
           }
@@ -594,6 +690,13 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "One Sample at a Time",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -690,6 +793,29 @@
         [
           {
             "node": "Needs Human?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One Sample at a Time": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Detect Language",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Capture Team Notice (not posted)": {
+      "main": [
+        [
+          {
+            "node": "One Sample at a Time",
             "type": "main",
             "index": 0
           }
